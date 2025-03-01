@@ -9,7 +9,8 @@ def create_range_doppler_map(frame_data, chirp_params, range_padding=4, doppler_
 
     I1 = frame_data[0, :]
     Q1 = frame_data[1, :]
-    complex_signal = I1 + 1j * Q1
+
+    complex_signal = I1 - 1j * Q1  # Essayer avec + ?
 
     expected_size = Mc * Ms
     actual_size = len(complex_signal)
@@ -23,6 +24,9 @@ def create_range_doppler_map(frame_data, chirp_params, range_padding=4, doppler_
             complex_signal = complex_signal[:Ms * Mc]
 
     signal_matrix = np.reshape(complex_signal, (Mc, Ms))
+
+    # Suppression des moyennes des colonnes?
+    signal_matrix -= np.mean(signal_matrix, axis=0, keepdims=True)
 
     range_window = windows.hann(Ms)
     doppler_window = windows.hann(Mc)
@@ -49,14 +53,11 @@ def create_range_doppler_map(frame_data, chirp_params, range_padding=4, doppler_
     max_velocity = doppler_res * n_doppler / 2
     velocity_axis = np.linspace(-max_velocity, max_velocity, n_doppler)
 
-    # Trouver la vitesse dominante
-    dominant_doppler_index = np.unravel_index(np.argmax(np.abs(range_doppler_map)), range_doppler_map.shape)[0]
-    dominant_velocity = velocity_axis[dominant_doppler_index]
-
-    # Recentrer l'axe des vitesses sur la vitesse dominante
-    velocity_axis -= dominant_velocity
+    # Supprimer les données liées aux vitesses nulles
+    range_doppler_map_db[:, np.argmin(np.abs(velocity_axis))] = 0
 
     return range_doppler_map_db, range_axis, velocity_axis
+
 
 def plot_multiple_range_doppler_maps(radar_data, chirp_params, num_frames=6, max_range=30, max_velocity=20):
     fig, axes = plt.subplots(2, 3, figsize=(15, 8))  
@@ -80,7 +81,7 @@ def plot_multiple_range_doppler_maps(radar_data, chirp_params, num_frames=6, max
         if vmax_global is None or curr_max > vmax_global:
             vmax_global = curr_max
 
-    vmin_global = vmax_global - 20  
+    vmin_global = vmax_global - 40  
 
     for i in range(num_frames):
         ax = axes[i]
@@ -110,6 +111,7 @@ def plot_multiple_range_doppler_maps(radar_data, chirp_params, num_frames=6, max
 
     plt.suptitle('Range-Doppler map', fontsize=16)
     plt.tight_layout(rect=[0, 0, 0.9, 0.95])  
+    plt.savefig('multrange_doppler_maps.pdf')
     plt.show()
 
 if __name__ == "__main__":
