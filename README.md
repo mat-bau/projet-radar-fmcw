@@ -8,7 +8,7 @@ Le *radar FMCW* (Frequency-modulated Continuous Wave) est un type de radar qui �
 
 ### Faible puissance d'émission requise
 
-En effet, un signal qui se propage dans l'air, diminue d'un facteur inversément proportionnel au carré de la distance parcourue (*$Puissance \propto \frac{1}{d^2}$*). Malheureusement, avec un radar à impulsions, on ne transmet que pendant une courte fraction de période (*$DC \approx 10^{-1}$*), pendant que le reste du temps est utilisé pour récupérer le signal à son retour. Donc si on regarde à la puissance moyenne envoyée par ce système sur toute la période, on est bien plus bas que si on émettait sur toute la période. 
+En effet, un signal qui se propage dans l'air, diminue d'un facteur inversément proportionnel au carré de la distance parcourue ($Puissance \propto \frac{1}{d^2}$). Malheureusement, avec un radar à impulsions, on ne transmet que pendant une courte fraction de période (*$DC \approx 10^{-1}$*), pendant que le reste du temps est utilisé pour récupérer le signal à son retour. Donc si on regarde à la puissance moyenne envoyée par ce système sur toute la période, on est bien plus bas que si on émettait sur toute la période. 
 
 $$P_{avg} = P_{peak} \times \frac{t_{on}}{t_{on}+t_{off}} = P_{peak} \times DC$$
 
