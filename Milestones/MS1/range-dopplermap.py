@@ -19,8 +19,8 @@ def create_range_doppler_map(frame_data, chirp_params, range_padding=4, doppler_
     """
     # Extraction des paramètres et conversion en entiers si nécessaire
     f0, B, Ms, Mc, Ts, Tc = chirp_params
-    Ms = int(Ms)  # Conversion explicite en entier
-    Mc = int(Mc)  # Conversion explicite en entier
+    Ms = int(Ms) 
+    Mc = int(Mc) 
     
     print(f"Paramètres convertis: Ms={Ms}, Mc={Mc}")
     print(f"Forme des données de la frame: {frame_data.shape}")
@@ -30,14 +30,12 @@ def create_range_doppler_map(frame_data, chirp_params, range_padding=4, doppler_
     actual_size = len(frame_data[0])
     print(f"Taille attendue: {expected_size}, Taille réelle: {actual_size}")
     
-    # Extraction des données I et Q du premier canal (I1, Q1)
+    # Creation du signal complexe
     I1 = frame_data[0, :]
     Q1 = frame_data[1, :]
-    
-    # Création du signal complexe
     complex_signal = I1 + 1j * Q1
     
-    # Ajustement si nécessaire pour correspondre à la taille attendue
+    # Vérification de la taille des données
     if actual_size != expected_size:
         print("Attention: La taille des données ne correspond pas exactement au produit Ms*Mc")
         print("Ajustement de Ms et Mc pour correspondre aux données...")

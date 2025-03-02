@@ -239,7 +239,7 @@ def plot_multiple_range_doppler_maps(radar_data, chirp_params, num_frames=6, max
     if filter_method != 'none':
         filename_parts.append(f"{filter_method}{velocity_threshold}")
     
-    filename = '_'.join(filename_parts) + '.pdf'
+    filename = 'images/' + '_'.join(filename_parts) + '.pdf'
     plt.savefig(filename)
     plt.show()
 
@@ -260,7 +260,7 @@ if __name__ == "__main__":
             print(f"Frame {i} - Min: {np.min(radar_data[i])}, Max: {np.max(radar_data[i])}")
         
         # Configuration des paramètres
-        velocity_threshold = 0.5     # Seuil de vitesse en m/s
+        velocity_threshold = 1.5      # Seuil de vitesse en m/s
         max_range = 30               # Distance maximale à afficher (m)
         max_velocity = 20            # Vitesse maximale à afficher (m/s)
         dynamic_range = 40           # Plage dynamique en dB
