@@ -32,7 +32,7 @@ def create_range_doppler_map(frame_data, chirp_params, range_padding=4, doppler_
 
     expected_size = Mc * Ms
     actual_size = len(complex_signal)
-
+    """
     if actual_size != expected_size:
         total_samples = len(complex_signal)
         if total_samples % Mc == 0:
@@ -40,8 +40,34 @@ def create_range_doppler_map(frame_data, chirp_params, range_padding=4, doppler_
         else:
             Ms = total_samples // Mc
             complex_signal = complex_signal[:Ms * Mc]
+    """
+    if len(complex_signal) != expected_size:
+        total_samples = len(complex_signal)
+        
+        # calcul Mpause
+        samples_per_total_chirp = total_samples // Mc
+        samples_per_active_chirp = Ms
+        Mpause = samples_per_total_chirp - samples_per_active_chirp
+        
+        # Redimensionner d'abord les données brutes en matrice complète (avec pauses)
+        # Nous ne gardons que les données qui forment des chirps complets
+        temp_radar_data = np.reshape(complex_signal[:Mc * samples_per_total_chirp], (Mc, samples_per_total_chirp))
+        
+        # Créer une nouvelle structure de données sans les pauses
+        radar_data_without_pauses = np.zeros((Mc, samples_per_active_chirp), dtype=complex)
+        
+        # Extraire uniquement la partie active de chaque chirp
+        for i in range(Mc):
+            radar_data_without_pauses[i, :] = temp_radar_data[i, :samples_per_active_chirp]
+        
+        # Utiliser les données sans pauses pour le traitement ultérieur
+        signal_matrix = radar_data_without_pauses
+    else:
+        # Le cas où les données ont déjà la taille attendue
+    
+        signal_matrix = np.reshape(complex_data,(Mc, Ms))
 
-    signal_matrix = np.reshape(complex_signal, (Mc, Ms))
+    #signal_matrix = np.reshape(complex_signal, (Mc, Ms))
 
     range_window = windows.hann(Ms)
     doppler_window = windows.hann(Mc)

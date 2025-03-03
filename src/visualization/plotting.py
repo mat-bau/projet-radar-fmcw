@@ -40,11 +40,13 @@ def plot_range_profile(range_profile, range_axis, title="Profil de distance", sa
     return plt.gcf()
 
 def plot_range_doppler(range_doppler_map, range_axis, velocity_axis, 
-                       title="Range-Doppler map", 
+                       title="Range-Doppler Map", 
                        dynamic_range=60, 
-                       save_path=None):
+                       save_path=None,
+                       cmap='jet',
+                       remove_static_components=True):
     """
-    Affiche une carte Range-Doppler
+    Affiche une carte Range-Doppler avec suppression des composantes statiques
     
     Parameters:
     -----------
@@ -60,30 +62,47 @@ def plot_range_doppler(range_doppler_map, range_axis, velocity_axis,
         Plage dynamique en dB pour la visualisation
     save_path : str, optional
         Chemin où sauvegarder l'image
+    cmap : str ou matplotlib.colors.Colormap, optional
+        La colormap à utiliser (défaut: 'jet')
+    remove_static_components : bool, optional
+        Si True, supprime les moyennes des colonnes pour éliminer les composantes statiques
     """
-    plt.figure(figsize=(12, 8))
-    vmax = np.max(range_doppler_map)
-    vmin = vmax - dynamic_range
-    map_to_plot = range_doppler_map[:len(velocity_axis), :len(range_axis)]
+    # Créer une copie pour ne pas modifier les données originales
+    map_data = range_doppler_map.copy()
     
-    # colormap personnalisé bleu
-    #cmap_blue = LinearSegmentedColormap.from_list('BlueMap', 
-    #                                            [(0, 'white'), 
-    #                                           (0.2, 'lightblue'),
-    #                                           (0.4, 'dodgerblue'),
-    #                                           (0.6, 'mediumblue'),
-    #                                           (0.8, 'darkblue'),
-    #                                           (1, 'black')])
+    # Supprimer les composantes statiques en soustrayant la moyenne de chaque colonne
+    if remove_static_components:
+        # Note: Cette opération doit être effectuée sur les données linéaires, pas en dB
+        # Si les données sont déjà en dB, il faut les convertir en linéaire d'abord
+        # Ici, nous supposons qu'elles sont déjà en dB
+        linear_data = 10**(map_data/20)  # Conversion de dB à linéaire
         
-    plt.pcolormesh(range_axis, velocity_axis, map_to_plot, 
-                   cmap='jet', vmin=vmin, vmax=vmax, shading='auto')
+        # Soustraire la moyenne de chaque colonne
+        column_means = np.mean(linear_data, axis=0)
+        linear_data_no_static = linear_data - column_means[np.newaxis, :]
+        
+        # Remettre en dB, en évitant les valeurs négatives
+        map_data = 20 * np.log10(np.maximum(np.abs(linear_data_no_static), 1e-10))
     
+    # S'assurer que les dimensions correspondent
+    map_to_plot = map_data[:len(velocity_axis), :len(range_axis)]
+    
+    # Créer la figure
+    plt.figure(figsize=(12, 8))
+    
+    # Calculer les limites de couleur basées sur la plage dynamique
+    vmax = np.max(map_to_plot)
+    vmin = vmax - dynamic_range
+    
+    plt.pcolormesh(range_axis, velocity_axis, map_to_plot, 
+                   cmap=cmap, vmin=vmin, vmax=vmax, shading='auto')
     plt.colorbar(label='Magnitude (dB)')
     plt.xlabel('Distance (m)')
     plt.ylabel('Vitesse (m/s)')
     plt.title(title)
+    
     plt.grid(True, linestyle='--', alpha=0.5)
-    plt.axhline(y=0, color='r', linestyle='-', alpha=0.3) # ligne vitesse nulle
+    plt.axhline(y=0, color='r', linestyle='-', alpha=0.3)
     
     plt.tight_layout()
     
@@ -151,39 +170,29 @@ def visualize_3d_range_doppler(range_doppler_map, range_axis, velocity_axis,
         Chemin où sauvegarder l'image
     """
     from mpl_toolkits.mplot3d import Axes3D
-    
-    # Créer une grille pour les axes X et Y
+
     R, V = np.meshgrid(range_axis, velocity_axis)
     
     # Créer la figure 3D
     fig = plt.figure(figsize=(12, 10))
     ax = fig.add_subplot(111, projection='3d')
-    
-    # Limiter la plage dynamique pour une meilleure visualisation
     vmax = np.max(range_doppler_map)
     vmin = vmax - 60
     Z = np.maximum(range_doppler_map[:len(velocity_axis), :len(range_axis)], vmin)
     
-    # Tracer la surface
     surf = ax.plot_surface(R, V, Z, cmap='viridis', 
                           linewidth=0, antialiased=True, alpha=0.8)
     
-    # Ajouter une barre de couleur
     fig.colorbar(surf, ax=ax, shrink=0.5, aspect=5, label='Magnitude (dB)')
-    
-    # Étiquettes des axes
     ax.set_xlabel('Distance (m)')
     ax.set_ylabel('Vitesse (m/s)')
     ax.set_zlabel('Magnitude (dB)')
     ax.set_title(title)
-    
-    # Régler l'angle de vue
     ax.view_init(elev=30, azim=225)
     
     plt.tight_layout()
     
     if save_path:
-        # Créer le dossier s'il n'existe pas
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         plt.savefig(save_path, dpi=300)
     

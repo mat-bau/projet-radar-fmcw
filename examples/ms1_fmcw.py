@@ -22,7 +22,7 @@ from src.visualization.plotting import (
 )
 
 def main():
-    """Fonction principale pour l'analyse des données MS1-FMCW"""
+    """Fonction principale pour l'analyse des données MS1-FMCW.npz"""
     
     # Configuration des paramètres
     parser = argparse.ArgumentParser(description='Analyse des données FMCW')
@@ -34,13 +34,13 @@ def main():
                        help='Répertoire de sortie pour les visualisations')
     parser.add_argument('--detect-targets', action='store_true',
                        help='Activer la détection de cibles avec CFAR')
-    parser.add_argument('--dynamic-range', type=int, default=20,
+    parser.add_argument('--dynamic-range', type=int, default=40,
                        help='Plage dynamique en dB pour la visualisation')
     parser.add_argument('--range-padding', type=int, default=10, # du coup ici c'est énorme normalement on est sensé faire avec 1
                        help='Facteur de zero-padding pour l\'axe distance')
     parser.add_argument('--doppler-padding', type=int, default=10,
                        help='Facteur de zero-padding pour l\'axe Doppler')
-    parser.add_argument('--window-type', type=str, default='blackman',
+    parser.add_argument('--window-type', type=str, default='hann',
                        help='Type de fenêtre à appliquer (hann, hamming, blackman, etc.)')
     parser.add_argument('--apply-2d-filter', action='store_true',
                        help='Appliquer un filtre 2D pour réduire le bruit')
@@ -92,6 +92,8 @@ def main():
         
         print(f"\nAnalyse de la frame {args.frame}...")
         
+        #print(data[0, 0, :10])
+        #print(data.shape)
         # Extraire une frame (I1 et Q1)
         complex_data = extract_frame(data, frame_index=args.frame, channel_indices=(0, 1))
         
@@ -111,8 +113,33 @@ def main():
             else:
                 Ms = total_samples // Mc
                 complex_data = complex_data[:Ms * Mc]
+            radar_data = np.reshape(complex_data, (Mc, Ms))
+        # test de reshappe en prenant en compte les pauses
+        if len(complex_data) != expected_size:
+            total_samples = len(complex_data)
+            
+            # calcul Mpause
+            samples_per_total_chirp = total_samples // Mc
+            samples_per_active_chirp = Ms
+            Mpause = samples_per_total_chirp - samples_per_active_chirp
+            
+            # Redimensionner d'abord les données brutes en matrice complète (avec pauses)
+            # Nous ne gardons que les données qui forment des chirps complets
+            temp_radar_data = np.reshape(complex_data[:Mc * samples_per_total_chirp], (Mc, samples_per_total_chirp))
+            
+            # Créer une nouvelle structure de données sans les pauses
+            radar_data_without_pauses = np.zeros((Mc, samples_per_active_chirp), dtype=complex)
+            
+            # Extraire uniquement la partie active de chaque chirp
+            for i in range(Mc):
+                radar_data_without_pauses[i, :] = temp_radar_data[i, :samples_per_active_chirp]
+            
+            # Utiliser les données sans pauses pour le traitement ultérieur
+            radar_data = radar_data_without_pauses
+        else:
+            # Le cas où les données ont déjà la taille attendue
         
-        radar_data = np.reshape(complex_data,(Mc, Ms))
+            radar_data = np.reshape(complex_data,(Mc, Ms))
         # print(radar_data)
         print(f"Forme des données après reshape: {radar_data.shape}")
 
@@ -209,7 +236,7 @@ def main():
             print(f"Carte Range-Doppler avec détections sauvegardée dans {detect_path}")
         else:
             # Dans plotting.py
-            print("Pas de cibles détectées, visualisation normale...")
+            print("Pas de détection CFAR, visualisation normale...")
             fig2 = plot_range_doppler(
                 range_doppler_map, 
                 range_axis, 
