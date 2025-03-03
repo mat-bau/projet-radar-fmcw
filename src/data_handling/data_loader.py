@@ -82,7 +82,7 @@ def extract_frame(data, frame_index=0, channel_indices=(0, 1)):
     
     return complex_data
 
-def reshape_to_chirps(complex_data, params):
+def reshape_to_chirps(complex_data, params, methode=2):
     """
     Reshape les données complexes en tableau 2D (chirps x échantillons)
     
@@ -92,7 +92,8 @@ def reshape_to_chirps(complex_data, params):
         Données complexes d'une frame
     params : dict
         Dictionnaire des paramètres
-        
+    methode : int
+        Choix de la méthode de reshape
     Returns:
     --------
     reshaped_data : ndarray
@@ -104,26 +105,28 @@ def reshape_to_chirps(complex_data, params):
     expected_size = int(Mc * Ms)
     actual_size = len(complex_data)
 
-    # on tronque ou on complète
-    if actual_size >= expected_size:
-        complex_data = complex_data[:expected_size]
-    else:
-        # si c'est plus court on complète avec des 0, ca n'arrive jamais en pratique
-        complex_data = np.pad(complex_data, (0, expected_size - actual_size))
-    
-    # Reshape de data qui est en 1D [I1+jQ1...] en matrice 2D [Mc x Ms] = [[I1+jQ1, I2+jQ2, ..., I_Ms+jQ_Ms], ...] (chaque ligne est une chirp)
-    reshaped_data = np.reshape(complex_data, (Mc, Ms))
+    if methode == 1:
+        # on tronque ou on complète
+        if actual_size >= expected_size:
+            complex_data = complex_data[:expected_size]
+        else:
+            # si c'est plus court on complète avec des 0, ca n'arrive jamais en pratique
+            complex_data = np.pad(complex_data, (0, expected_size - actual_size))
+        
+        # Reshape de data qui est en 1D [I1+jQ1...] en matrice 2D [Mc x Ms] = [[I1+jQ1, I2+jQ2, ..., I_Ms+jQ_Ms], ...] (chaque ligne est une chirp)
+        reshaped_data = np.reshape(complex_data, (Mc, Ms))
 
-    return reshaped_data
+        return reshaped_data
 
-"""     
+    elif methode == 2:   
         # Reshape des données !! Attention c'est assez critique ici, je dois encore y regarder
-        if len(complex_data) != expected_size:
-            total_samples = len(complex_data)
+        if actual_size != expected_size:
+            total_samples = actual_size
             if total_samples % Mc == 0:
                 Ms = total_samples // Mc
             else:
                 Ms = total_samples // Mc
                 complex_data = complex_data[:Ms * Mc]
             radar_data = np.reshape(complex_data, (Mc, Ms)) # ligne de taille Mc (info sur Doppler) et colonne de taille Ms (info sur distance)
-"""
+            
+            return radar_data

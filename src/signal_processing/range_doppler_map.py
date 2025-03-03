@@ -117,15 +117,19 @@ def generate_range_doppler_map_with_axes(data, params, window_type='hann',
     
     windowed_data = apply_window(data, window_type)
     
-    # 1ère FFT2 pour la distance
+    """
+    # 1ère FFT le long des lignes pour la distance
     range_fft = np.fft.fft(windowed_data, n=padded_Ms, axis=1)
     # print(f"range_fft vite fait: {range_fft}") # encore du mal avec ce padding
-    # 2e FFT2 pour la vitesse
+    # 2e FFT le long des colonnes pour la vitesse
     range_doppler_map = np.fft.fft(range_fft, n=padded_Mc, axis=0)
 
     # et shift pour avoir 0 au centre
     range_doppler_map = np.fft.fftshift(range_doppler_map, axes=0)
-    
+    """
+
+    # FFT2 (premier axe = distance, deuxième axe = vitesse)
+    range_doppler_map = np.fft.fftshift(np.abs(np.fft.fft2(windowed_data, s=(padded_Mc, padded_Ms))), axes=0)
     # calcule les axes physiques
     range_axis = calculate_range_axis(params, padded_Ms)
     velocity_axis = calculate_velocity_axis(params, padded_Mc)

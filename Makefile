@@ -7,11 +7,14 @@ DATA_DIR = data
 OUTPUT_DIR = output
 EXAMPLES_DIR = examples
 
+# Exécutable principal
+MAIN_SCRIPT = analyze_radar.py
+ANIM_SCRIPT = animate_radar.py
 # Cibles principales
 .PHONY: all setup run-ms1 run-animation clean
 
 # Cible par défaut
-all: setup run-ms1
+all: setup
 
 # Installation des dépendances
 setup:
@@ -23,26 +26,34 @@ requirements.txt:
 	@echo "matplotlib>=3.5.0" >> requirements.txt
 	@echo "scipy>=1.7.0" >> requirements.txt
 
-# Exécution du script d'analyse simple MS1-FMCW
-# Exécution du script d'analyse simple MS1-FMCW
-run-ms1:
-	@mkdir -p $(OUTPUT_DIR)
-	PYTHONPATH=. $(PYTHON) $(EXAMPLES_DIR)/ms1_fmcw.py --data-file $(DATA_DIR)/MS1-FMCW.npz --frame 0 --output-dir $(OUTPUT_DIR)
+# Exécution du script d'analyse simple
+run-%:
+	@echo "Analyse du fichier $(DATA_DIR)/$*.npz"
+	@if [ ! -f "$(DATA_DIR)/$*.npz" ]; then \
+		echo "Erreur: Le fichier $(DATA_DIR)/$*.npz n'existe pas"; \
+		exit 1; \
+	fi
+	RADAR_DATA_FILE=$(DATA_DIR)/$*.npz $(PYTHON) $(EXAMPLES_DIR)/$(MAIN_SCRIPT)
 
-# Exécution du script d'animation
-run-animation:
-	@mkdir -p $(OUTPUT_DIR)
-	$(PYTHON) $(EXAMPLES_DIR)/animate_frames.py --data-file $(DATA_DIR)/MS1-FMCW.npz --start-frame 0 --num-frames 6 --output-file $(OUTPUT_DIR)/radar_animation.mp4
+# Animation 2D
+runanim-%:
+	@echo "Création d'une animation 2D pour le fichier $(DATA_DIR)/$*.npz"
+	@if [ ! -f "$(DATA_DIR)/$*.npz" ]; then \
+		echo "Erreur: Le fichier $(DATA_DIR)/$*.npz n'existe pas"; \
+		exit 1; \
+	fi
+	@mkdir -p output/$*
+	RADAR_DATA_FILE=$(DATA_DIR)/$*.npz $(PYTHON) $(EXAMPLES_DIR)/$(ANIM_SCRIPT) --output-dir=output/$* --view-type=2d
 
-# Exécution d'un script de comparaison des cartes Range-Doppler
-run-comparison:
-	@mkdir -p $(OUTPUT_DIR)
-	$(PYTHON) src/comparaison_rdm.py
-
-# Génération d'une carte Range-Doppler multi-frame
-run-multiframe:
-	@mkdir -p $(OUTPUT_DIR)
-	$(PYTHON) src/multiframe_range-doppler-map.py
+# Animation 3D
+runanim3d-%:
+	@echo "Création d'une animation 3D pour le fichier $(DATA_DIR)/$*.npz"
+	@if [ ! -f "$(DATA_DIR)/$*.npz" ]; then \
+		echo "Erreur: Le fichier $(DATA_DIR)/$*.npz n'existe pas"; \
+		exit 1; \
+	fi
+	@mkdir -p output/$*
+	RADAR_DATA_FILE=$(DATA_DIR)/$*.npz $(PYTHON) $(EXAMPLES_DIR)/$(ANIM_SCRIPT) --output-dir=output/$* --view-type=3d
 
 # Nettoyage
 clean:
@@ -60,10 +71,13 @@ help:
 	@echo "Commandes disponibles :"
 	@echo "  make               - Installer les dépendances et exécuter l'analyse MS1-FMCW"
 	@echo "  make setup         - Installer les dépendances"
-	@echo "  make run-ms1       - Exécuter l'analyse de base MS1-FMCW"
-	@echo "  make run-animation - Créer une animation à partir de plusieurs frames"
-	@echo "  make run-comparison - Exécuter la comparaison des cartes Range-Doppler"
-	@echo "  make run-multiframe - Générer une carte Range-Doppler multi-frame"
-	@echo "  make run-rdm       - Générer une carte Range-Doppler simple"
 	@echo "  make clean         - Nettoyer les fichiers temporaires"
 	@echo "  make help          - Afficher cette aide"
+	@echo "  make run-FICHIER      - Exécute l'analyse sur FICHIER.npz (dans le répertoire $(DATA_DIR))"
+	@echo "  make help             - Affiche cette aide"
+	@echo "  make clean            - Nettoie les fichiers générés"
+	@echo ""
+	@echo "Exemples:"
+	@echo "  make run-MS1-FMCW     - Analyse le fichier data/MS1-FMCW.npz"
+	@echo "  make run-anim-MS1-FMCW    - Crée une animation 2D du fichier data/MS1-FMCW.npz"
+	@echo "  make run-anim-3d-MS1-FMCW - Crée une animation 3D du fichier data/MS1-FMCW.npz"

@@ -97,7 +97,7 @@ def main():
         # Extraire une frame (I1 et Q1)
         complex_data = extract_frame(data, frame_index=args.frame, channel_indices=(0, 1))
         
-        radar_data = reshape_to_chirps(complex_data,params)
+        radar_data = reshape_to_chirps(complex_data,params,2)
         
         # print(radar_data)
         print(f"Forme des données après reshape: {radar_data.shape}")
@@ -141,7 +141,7 @@ def main():
             print(f"Velocity axis: de {velocity_axis[0]:.2f}m/s à {velocity_axis[-1]:.2f}m/s, {len(velocity_axis)} points")
             
         except Exception as e:
-            print(f"Erreur lors de la génération de la carte Range-Doppler: {str(e)}")
+            print(f"Erreur lors de la génération de la Range-Doppler map: {str(e)}")
             print("Utilisation de la méthode standard sans zero-padding...")
             from src.signal_processing.range_doppler_map import generate_range_doppler_map, calculate_velocity_axis
             range_doppler_map = generate_range_doppler_map(radar_data, window_type=args.window_type)
