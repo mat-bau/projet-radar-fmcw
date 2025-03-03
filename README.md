@@ -44,27 +44,65 @@ Les radars FMCW mesurent la vitesse des objets grâce à l'effet Doppler et à d
 
 ## Structure du dépôt
 
-radar-fmcw/
-├── src/                    # Code source principal
-│   ├── signal_processing/  # Algorithmes de traitement du signal
-│   ├── visualization/      # Outils de visualisation
-│   └── simulation/         # Simulateurs de signaux radar
-├── examples/               # Exemples d'utilisation
-├── data/                   # Données d'exemple et fichiers de configuration
-├── docs/                   # Documentation détaillée
-└── tests/                  # Tests unitaires et d'intégration
+radar-fmcw/         
+├── src/                    # Définitions des fct utiles        
+│   ├── signal_processing/  # Algorithmes de traitement du signal       
+│   ├── visualization/      # Outils de visualisation       
+│   └── simulation/         # Simulateurs de signaux radar              
+├── examples/               # Application sur des fichiers de données       
+├── data/                   # Données d'exemple et fichiers de configuration        
+├── docs/                   # Documentation détaillée           
+└── tests/                  # Tests unitaires  
 
 ## Installation 
 
+Pour installer et configurer ce projet, suivez les étapes ci-dessous :
+
+### Prérequis
+
+- Python 3.6 ou supérieur
+- pip (gestionnaire de paquets Python)
+- make (facultatif, mais recommandé pour faciliter l'installation)
+
+### Installation manuelle
+
+1. Clonez le dépôt :
 ```bash
 # Cloner le dépôt
-git clone https://github.com/username/radar-fmcw.git
+git clone https://github.com/mat-bau/projet-radar-fmcw.git
 cd radar-fmcw
+```
+2. Créez un environnement virtuel (recommandé)
 
-# Installer les dépendances
+3. Installez les dépendances :
+```bash
 pip install -r requirements.txt
-
-# Installation en mode développement
+```
+4. Installez le package en mode développement :
+```bash
 pip install -e .
 ```
+### Installation avec Make
+Si vous préférez utiliser Make, une seule commande suffit :
 
+make setup
+
+Cette commande va :
+1. Créer un environnement virtuel Python
+2. Installer toutes les dépendances requises
+3. Installer le package en mode développement
+
+### Vérification de l'installation
+
+Pour vérifier que tout fonctionne correctement, runnez un exemple :
+
+```bash
+make run-ms1
+```
+
+## Utilisation
+
+Consultez la documentation d'aide du Makefile pour les différentes commandes disponibles :
+```bash
+make help
+```
