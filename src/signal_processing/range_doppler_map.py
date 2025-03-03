@@ -8,7 +8,7 @@ def apply_window(data, window_type='hann'):
     Parameters:
     -----------
     data : ndarray
-        Données de forme (num_chirps, samples_per_chirp)
+        Données de forme (num_shirps, samples_per_chirp)
 
     window_type : str
         Type de fenêtre à appliquer ('hann', 'hamming', 'blackman', etc.)
@@ -18,11 +18,11 @@ def apply_window(data, window_type='hann'):
     windowed_data : ndarray
         Données avec fenêtre appliquée
     """
-    num_chirps, num_samples = data.shape
+    Mc, Ms = data.shape
     
     # crée les fenêtres
-    range_window = getattr(signal.windows, window_type)(num_samples)
-    doppler_window = getattr(signal.windows, window_type)(num_chirps)
+    range_window = getattr(signal.windows, window_type)(Ms)
+    doppler_window = getattr(signal.windows, window_type)(Mc)
     
     # Appliquer la fenêtre en distance ici colonnes
     windowed_data = data * range_window[np.newaxis, :]
@@ -49,10 +49,10 @@ def generate_range_profile(data, window_type='hann'):
     range_profile : ndarray
         Profil de distance moyenné sur tous les chirps (en dB)
     """
-    num_chirps, num_samples = data.shape
+    Mc, Ms = data.shape
     
     # fenêtre en distance uniquement
-    range_window = getattr(signal.windows, window_type)(num_samples)
+    range_window = getattr(signal.windows, window_type)(Ms)
     windowed_data = data * range_window[np.newaxis, :]
     
     # FFT sur chaque chirp (dimension distance)
@@ -68,15 +68,15 @@ def generate_range_profile(data, window_type='hann'):
 
 def generate_range_doppler_map_with_axes(data, params, window_type='hann', 
                                         range_padding_factor=2, doppler_padding_factor=4,
-                                        apply_2d_filter=True, kernel_size=3):
+                                        apply_2d_filter=False, kernel_size=3):
     """
-    Génère une carte Range-Doppler à partir des données radar avec zero-padding
+    Génère une Range-Doppler map à partir des données radar avec zero-padding
     et retourne également les axes physiques
     
     Parameters:
     -----------
     data : ndarray
-        Données de forme (num_chirps, samples_per_chirp)
+        Données de forme (Mc, samples_per_chirp)
         
     params : dict
         Dictionnaire contenant les paramètres du radar
@@ -107,40 +107,37 @@ def generate_range_doppler_map_with_axes(data, params, window_type='hann',
     velocity_axis : ndarray
         Axe de vitesse en m/s
     """
-    # Extraire les dimensions
-    num_chirps, num_samples = data.shape
+    # ici on prend pas direct du dictionnaire de paramètres pcq il y a une pause M = Mc*(Ms+Mpause)
+    Mc, Ms = data.shape
     
-    # Calculer les nouvelles dimensions avec zero-padding
-    padded_num_samples = num_samples * range_padding_factor
-    # print(f"padded_num_samples: {padded_num_samples}")
-    padded_num_chirps = num_chirps * doppler_padding_factor
+    # Nouvelles dimensions avec zero-padding
+    padded_Ms = Ms * range_padding_factor
+    # print(f"padded_Ms: {padded_Ms}")
+    padded_Mc = Mc * doppler_padding_factor
     
-    # Appliquer une fenêtre aux données
     windowed_data = apply_window(data, window_type)
     
-    # 1ère FFT pour la distance avec zero-padding
-    range_fft = np.fft.fft(windowed_data, n=padded_num_samples, axis=1)
+    # 1ère FFT2 pour la distance
+    range_fft = np.fft.fft(windowed_data, n=padded_Ms, axis=1)
     # print(f"range_fft vite fait: {range_fft}") # encore du mal avec ce padding
-    # 2e FFT pour la vitesse avec zero-padding
-    range_doppler_map = np.fft.fft(range_fft, n=padded_num_chirps, axis=0)
+    # 2e FFT2 pour la vitesse
+    range_doppler_map = np.fft.fft(range_fft, n=padded_Mc, axis=0)
 
     # et shift pour avoir 0 au centre
     range_doppler_map = np.fft.fftshift(range_doppler_map, axes=0)
     
-    # Calculer les axes physiques
-    range_axis = calculate_range_axis(params, padded_num_samples)
-    velocity_axis = calculate_velocity_axis(params, padded_num_chirps)
+    # calcule les axes physiques
+    range_axis = calculate_range_axis(params, padded_Ms)
+    velocity_axis = calculate_velocity_axis(params, padded_Mc)
     
-    # Convertir en magnitude
     range_doppler_magnitude = np.abs(range_doppler_map)
     
-    # Appliquer un filtre 2D pour réduire le bruit si demandé
+    # filtre 2D pour réduire le bruit si demandé
     if apply_2d_filter:
         from scipy import ndimage
         range_doppler_magnitude = ndimage.median_filter(range_doppler_magnitude, size=kernel_size)
     
-    # Convertir en dB
-    range_doppler_db = 20 * np.log10(range_doppler_magnitude + 1e-15)
+    range_doppler_db = 20 * np.log10(range_doppler_magnitude)
     
     return range_doppler_db, range_axis, velocity_axis
 
@@ -175,8 +172,7 @@ def calculate_range_axis(params, padded_samples=None):
     
     # Calcul de la nouvelle résolution avec zero-padding
     actual_resolution = range_resolution * (Ms / padded_samples)
-    
-    # Axe de distance
+
     range_axis = np.arange(padded_samples) * actual_resolution
     
     return range_axis
@@ -206,7 +202,7 @@ def calculate_velocity_axis(params, padded_chirps=None):
             raise KeyError(f"Paramètre manquant: '{param}'")
     
     f0 = params['start_freq']
-    Mc = int(params['num_chirps'])  # Convertir en entier pour éviter les problèmes de type
+    Mc = int(params['num_chirps'])
     Tc = params['chirp_time']
     
     # Si padded_chirps n'est pas spécifié, utiliser Mc
@@ -228,13 +224,13 @@ def calculate_velocity_axis(params, padded_chirps=None):
 
 def generate_range_doppler_map(data, window_type='hann', range_padding_factor=2, doppler_padding_factor=2):
     """
-    Génère une carte Range-Doppler à partir des données radar avec zero-padding
+    Génère une Range-Doppler map à partir des données radar avec zero-padding
     pour améliorer la résolution
     
     Parameters:
     -----------
     data : ndarray
-        Données de forme (num_chirps, samples_per_chirp)
+        Données de forme (Mc, samples_per_chirp)
 
     window_type : str
         Type de fenêtre à appliquer ('hann', 'hamming', 'blackman', etc.)
@@ -250,27 +246,19 @@ def generate_range_doppler_map(data, window_type='hann', range_padding_factor=2,
     range_doppler_map : ndarray
         Carte Range-Doppler en 2D (en dB)
     """
-    # Extraire les dimensions
-    num_chirps, num_samples = data.shape
+    # Dimensions
+    Mc, Ms = data.shape
+    padded_Ms = Ms * range_padding_factor
+    padded_Mc = Mc * doppler_padding_factor
     
-    # Calculer les nouvelles dimensions avec zero-padding
-    padded_num_samples = num_samples * range_padding_factor
-    padded_num_chirps = num_chirps * doppler_padding_factor
-    
-    # Appliquer une fenêtre aux données
+    # fenetre tjrs pour second lobe
     windowed_data = apply_window(data, window_type)
     
-    # 1ère FFT pour la distance avec zero-padding
-    range_fft = np.fft.fft(windowed_data, n=padded_num_samples, axis=1)
-    
-    # 2e FFT pour la vitesse avec zero-padding
-    range_doppler_map = np.fft.fft(range_fft, n=padded_num_chirps, axis=0)
+    range_fft = np.fft.fft(windowed_data, n=padded_Ms, axis=1)
+    range_doppler_map = np.fft.fft(range_fft, n=padded_Mc, axis=0)
 
-    # et shift pour avoir 0 au centre
     range_doppler_map = np.fft.fftshift(range_doppler_map, axes=0)
-    
-    # Magnitude en dB!
-    range_doppler_db = 20 * np.log10(np.abs(range_doppler_map) + 1e-15)
+    range_doppler_db = 20 * np.log10(np.abs(range_doppler_map))
     
     return range_doppler_db
 

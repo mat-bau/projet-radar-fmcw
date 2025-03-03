@@ -46,7 +46,7 @@ def plot_range_doppler(range_doppler_map, range_axis, velocity_axis,
                        cmap='jet',
                        remove_static_components=True):
     """
-    Affiche une carte Range-Doppler avec suppression des composantes statiques
+    Affiche une Range-Doppler map en supprimant des composantes statiques
     
     Parameters:
     -----------

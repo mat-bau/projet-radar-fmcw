@@ -32,14 +32,14 @@ def load_fmcw_data(filepath):
         params = {
             'start_freq': f0,       # Fréquence porteuse (Hz)
             'bandwidth': B,         # Largeur de bande (Hz)
-            'samples_per_chirp': Ms,  # Échantillons par rampe
+            'samples_per_chirp': Ms,  # Échantillons par rampe (sans les pauses)
             'num_chirps': Mc,       # Nombre de rampes
             'sample_time': Ts,      # Pas d'échantillonnage (s)
             'chirp_time': Tc,       # Temps entre chirps (s)
             'sample_rate': 1/Ts,    # Taux d'échantillonnage (Hz)
         }
         
-        # Ajouter les paramètres calculés
+        # autres paramètres calculés
         params['range_resolution'] = 3e8 / (2 * B)  # Résolution en distance (m)
         params['max_range'] = 3e8 * Ms * Ts / 2     # Portée maximale (m)
         params['velocity_resolution'] = 3e8 / (2 * f0 * Mc * Tc)  # Résolution en vitesse (m/s)
@@ -78,7 +78,7 @@ def extract_frame(data, frame_index=0, channel_indices=(0, 1)):
     Q = data[frame_index, channel_indices[1], :]
     
     # e_z
-    complex_data = I + 1j * Q
+    complex_data = I - 1j * Q
     
     return complex_data
 
@@ -98,20 +98,32 @@ def reshape_to_chirps(complex_data, params):
     reshaped_data : ndarray
         Données reshapées de forme (num_chirps, samples_per_chirp)
     """
-    Ms = int(params['samples_per_chirp'])  # Conversion explicite en entier
-    Mc = int(params['num_chirps'])         # Conversion explicite en entier
+    Ms = int(params['samples_per_chirp']) 
+    Mc = int(params['num_chirps'])         
     
-    # Calcul de la taille attendue des données
-    expected_size = int(Mc * Ms)  # Conversion explicite en entier
-    
-    # Tronquer ou compléter si nécessaire
-    if len(complex_data) >= expected_size:
+    expected_size = int(Mc * Ms)
+    actual_size = len(complex_data)
+
+    # on tronque ou on complète
+    if actual_size >= expected_size:
         complex_data = complex_data[:expected_size]
     else:
-        # Compléter avec des zéros si les données sont plus courtes
-        complex_data = np.pad(complex_data, (0, expected_size - len(complex_data)))
+        # si c'est plus court on complète avec des 0, ca n'arrive jamais en pratique
+        complex_data = np.pad(complex_data, (0, expected_size - actual_size))
     
-    # Reshape en (num_chirps, samples_per_chirp)
-    reshaped_data = complex_data.reshape(Mc, Ms)
-    
+    # Reshape de data qui est en 1D [I1+jQ1...] en matrice 2D [Mc x Ms] = [[I1+jQ1, I2+jQ2, ..., I_Ms+jQ_Ms], ...] (chaque ligne est une chirp)
+    reshaped_data = np.reshape(complex_data, (Mc, Ms))
+
     return reshaped_data
+
+"""     
+        # Reshape des données !! Attention c'est assez critique ici, je dois encore y regarder
+        if len(complex_data) != expected_size:
+            total_samples = len(complex_data)
+            if total_samples % Mc == 0:
+                Ms = total_samples // Mc
+            else:
+                Ms = total_samples // Mc
+                complex_data = complex_data[:Ms * Mc]
+            radar_data = np.reshape(complex_data, (Mc, Ms)) # ligne de taille Mc (info sur Doppler) et colonne de taille Ms (info sur distance)
+"""

@@ -9,7 +9,7 @@ import argparse
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.data_handling.data_loader import load_fmcw_data, extract_frame, reshape_to_chirps
-from src.signal_processing.range_doppler import (generate_range_doppler_map,
+from src.signal_processing.range_doppler_map import (generate_range_doppler_map,
                                                calculate_range_axis,
                                                calculate_velocity_axis)
 

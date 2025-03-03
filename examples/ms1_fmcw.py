@@ -97,49 +97,8 @@ def main():
         # Extraire une frame (I1 et Q1)
         complex_data = extract_frame(data, frame_index=args.frame, channel_indices=(0, 1))
         
-        # Extraire les paramètres importants
-        Ms = int(params['samples_per_chirp'])
-        Mc = int(params['num_chirps'])
-        expected_size = Mc * Ms
+        radar_data = reshape_to_chirps(complex_data,params)
         
-        print(f"Taille attendue des données: {expected_size}")
-        print(f"Taille réelle des données: {len(complex_data)}")
-        
-        # Reshape des données !! Attention c'est assez critique ici, je dois encore y regarder
-        if len(complex_data) != expected_size:
-            total_samples = len(complex_data)
-            if total_samples % Mc == 0:
-                Ms = total_samples // Mc
-            else:
-                Ms = total_samples // Mc
-                complex_data = complex_data[:Ms * Mc]
-            radar_data = np.reshape(complex_data, (Mc, Ms))
-        # test de reshappe en prenant en compte les pauses
-        if len(complex_data) != expected_size:
-            total_samples = len(complex_data)
-            
-            # calcul Mpause
-            samples_per_total_chirp = total_samples // Mc
-            samples_per_active_chirp = Ms
-            Mpause = samples_per_total_chirp - samples_per_active_chirp
-            
-            # Redimensionner d'abord les données brutes en matrice complète (avec pauses)
-            # Nous ne gardons que les données qui forment des chirps complets
-            temp_radar_data = np.reshape(complex_data[:Mc * samples_per_total_chirp], (Mc, samples_per_total_chirp))
-            
-            # Créer une nouvelle structure de données sans les pauses
-            radar_data_without_pauses = np.zeros((Mc, samples_per_active_chirp), dtype=complex)
-            
-            # Extraire uniquement la partie active de chaque chirp
-            for i in range(Mc):
-                radar_data_without_pauses[i, :] = temp_radar_data[i, :samples_per_active_chirp]
-            
-            # Utiliser les données sans pauses pour le traitement ultérieur
-            radar_data = radar_data_without_pauses
-        else:
-            # Le cas où les données ont déjà la taille attendue
-        
-            radar_data = np.reshape(complex_data,(Mc, Ms))
         # print(radar_data)
         print(f"Forme des données après reshape: {radar_data.shape}")
 
