@@ -1,2 +1,7 @@
 .vscode/
 .venv/
+
+# pour les visualisations pcq ca bouffe de la place
+output/
+*.mp4
+*.pdf
