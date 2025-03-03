@@ -240,12 +240,12 @@ def plot_multiple_range_doppler_maps(radar_data, chirp_params, num_frames=6, max
     if filter_method != 'none':
         filename_parts.append(f"{filter_method}{velocity_threshold}")
     
-    filename = '../output/' + '_'.join(filename_parts) + '.pdf'
+    filename = 'output/' + '_'.join(filename_parts) + '.pdf'
     plt.savefig(filename)
     plt.show()
 
 if __name__ == "__main__":
-    file_path = os.path.join("..","data", "MS1-FMCW.npz")
+    file_path = os.path.join("data", "MS1-FMCW.npz")
     
     try:
         data_dict = np.load(file_path, allow_pickle=True)
