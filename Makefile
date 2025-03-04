@@ -25,6 +25,8 @@ requirements.txt:
 	@echo "numpy>=1.20.0" > requirements.txt
 	@echo "matplotlib>=3.5.0" >> requirements.txt
 	@echo "scipy>=1.7.0" >> requirements.txt
+	@echo "pandas>=1.3.0" >> requirements.txt
+	@echo "pytest>=7.0.0" >> requirements.txt
 
 # Exécution du script d'analyse simple
 run-%:
