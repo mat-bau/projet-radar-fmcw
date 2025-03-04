@@ -102,10 +102,12 @@ def reshape_to_chirps(complex_data, params, methode=2):
         Données reshapées de forme (num_chirps, samples_per_chirp)
     """
     Ms = int(params['samples_per_chirp']) 
-    Mc = int(params['num_chirps'])         
+    Mc = int(params['num_chirps'])     
+
     
     expected_size = int(Mc * Ms)
     actual_size = len(complex_data) # oui il y a les échantillon de la pause
+    Mpause = actual_size//Mc - Ms 
     
     # pas la bonne méthode
     if methode == 1:
@@ -126,10 +128,12 @@ def reshape_to_chirps(complex_data, params, methode=2):
         if actual_size != expected_size:
             total_samples = actual_size
             if total_samples % Mc == 0:
-                Ms = total_samples // Mc
+                Mspause = total_samples // Mc
+                print(f"complex_data={complex_data}")
+                print(f"Shape de complex_data: {complex_data.shape}")
             else:
                 Ms = total_samples // Mc
-                complex_data = complex_data[:Mc]
-            radar_data = np.reshape(complex_data, (Mc, Ms)) # ligne de taille Mc (info sur Doppler) et colonne de taille Ms (info sur distance)
+            radar_data = np.reshape(complex_data, (Mc, Ms+Mpause)) # ligne de taille Mc (info sur Doppler) et colonne de taille Ms+Mpause (info sur distance)
         print(radar_data.shape)
+        radar_data = radar_data[:, :Ms] # on enlève les échantillons de la pause
         return radar_data
