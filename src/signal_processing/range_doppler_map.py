@@ -67,8 +67,7 @@ def generate_range_profile(data, window_type='hann'):
     return range_profile_db
 
 def generate_range_doppler_map_with_axes(data, params, window_type='hann', 
-                                        range_padding_factor=2, doppler_padding_factor=4,
-                                        apply_2d_filter=False, kernel_size=3):
+                                        range_padding_factor=2, doppler_padding_factor=4,):
     """
     Génère une Range-Doppler map à partir des données radar avec zero-padding
     et retourne également les axes physiques
@@ -89,12 +88,6 @@ def generate_range_doppler_map_with_axes(data, params, window_type='hann',
         
     doppler_padding_factor : int
         Facteur de zero-padding pour l'axe Doppler (1 = pas de padding)
-        
-    apply_2d_filter : bool
-        Appliquer un filtre médian 2D pour réduire le bruit
-        
-    kernel_size : int
-        Taille du noyau du filtre 2D (si apply_2d_filter=True)
         
     Returns:
     --------
@@ -135,11 +128,6 @@ def generate_range_doppler_map_with_axes(data, params, window_type='hann',
     velocity_axis = calculate_velocity_axis(params, padded_Mc)
     
     range_doppler_magnitude = np.abs(range_doppler_map)
-    
-    # filtre 2D pour réduire le bruit si demandé
-    if apply_2d_filter:
-        from scipy import ndimage
-        range_doppler_magnitude = ndimage.median_filter(range_doppler_magnitude, size=kernel_size)
     
     range_doppler_db = 20 * np.log10(range_doppler_magnitude)
     
