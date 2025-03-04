@@ -42,8 +42,6 @@ def main():
                        help='Facteur de zero-padding pour l\'axe Doppler')
     parser.add_argument('--window-type', type=str, default='hann',
                        help='Type de fenêtre à appliquer (hann, hamming, blackman, etc.)')
-    parser.add_argument('--apply-2d-filter', action='store_true',
-                       help='Appliquer un filtre 2D pour réduire le bruit')
     args = parser.parse_args()
     
     # # # # # # # # # # # # # #
@@ -53,7 +51,7 @@ def main():
         if 'RADAR_DATA_FILE' in os.environ:
             args.data_file = os.environ['RADAR_DATA_FILE']
         else:
-            args.data_file = 'data/MS1-FMCW.npz'  # Valeur par défaut
+            args.data_file = 'data/MS1-FMCW.npz'  # Par défaut
 
     filename_base = os.path.splitext(os.path.basename(args.data_file))[0]
 
@@ -108,13 +106,12 @@ def main():
         # Extraire une frame (I1 et Q1)
         complex_data = extract_frame(data, frame_index=args.frame, channel_indices=(0, 1))
         
-        radar_data = reshape_to_chirps(complex_data, params, 2)
+        radar_data = reshape_to_chirps(complex_data, params, 2) # e_z
         
         print(f"Forme des données après reshape: {radar_data.shape}")
-
         print("\nGénération des visualisations...")
         
-        # 1. Profil de distance
+        # 1. Profil de distance (à voir si c'est vraiment utile)
         print("Génération du profil de distance...")
         try:
             range_profile = generate_range_profile(radar_data, window_type=args.window_type)
@@ -126,16 +123,14 @@ def main():
         from src.signal_processing.range_doppler_map import calculate_range_axis
         range_axis_no_padding = calculate_range_axis(params)
         
-        # Extraire le nom du fichier pour l'inclure dans les noms de fichiers de sortie
-        filename_base = os.path.splitext(os.path.basename(args.data_file))[0]
-        
         fig1 = plot_range_profile(
             range_profile, 
             range_axis_no_padding, 
-            title=f"Profil de distance - {filename_base} - Frame {args.frame}",
-            save_path=f"{args.output_dir}/range_profile_frame{args.frame}_{filename_base}.pdf"
+            title=f"Profil de distance - Frame {args.frame}",
+            save_path=f"{args.output_dir}/range_profile_frame{args.frame}.pdf"
         )
         
+
         # 2. Range-Doppler map avec la nouvelle fonction qui retourne aussi les axes
         print("Génération de la Range-Doppler Map avec zero-padding...")
         try:
@@ -144,8 +139,7 @@ def main():
                 params,
                 window_type=args.window_type,
                 range_padding_factor=args.range_padding,
-                doppler_padding_factor=args.doppler_padding,
-                apply_2d_filter=args.apply_2d_filter
+                doppler_padding_factor=args.doppler_padding
             )
             
             print(f"Shape de la Range-Doppler Map après zero-padding: {range_doppler_map.shape}")
