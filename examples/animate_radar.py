@@ -37,8 +37,6 @@ def main():
                        help='Facteur de zero-padding pour l\'axe Doppler')
     parser.add_argument('--window-type', type=str, default='hann',
                        help='Type de fenêtre à appliquer (hann, hamming, blackman, etc.)')
-    parser.add_argument('--apply-2d-filter', action='store_true',
-                       help='Appliquer un filtre 2D pour réduire le bruit')
     parser.add_argument('--fps', type=int, default=10,
                        help='Images par seconde pour l\'animation')
     parser.add_argument('--start-frame', type=int, default=0,
@@ -119,8 +117,7 @@ def main():
                 params,
                 window_type=args.window_type,
                 range_padding_factor=args.range_padding,
-                doppler_padding_factor=args.doppler_padding,
-                apply_2d_filter=args.apply_2d_filter
+                doppler_padding_factor=args.doppler_padding
             )
             
             # Définir les limites d'axes basées sur les paramètres radar
@@ -145,8 +142,7 @@ def main():
                 params,
                 window_type=args.window_type,
                 range_padding_factor=args.range_padding,
-                doppler_padding_factor=args.doppler_padding,
-                apply_2d_filter=args.apply_2d_filter
+                doppler_padding_factor=args.doppler_padding
             )
             
             # Définir les limites d'axes basées sur les paramètres radar
@@ -187,8 +183,7 @@ def main():
                     params,
                     window_type=args.window_type,
                     range_padding_factor=args.range_padding,
-                    doppler_padding_factor=args.doppler_padding,
-                    apply_2d_filter=args.apply_2d_filter
+                    doppler_padding_factor=args.doppler_padding
                 )
             except Exception as e:
                 print(f"Erreur lors de la génération de la Range-Doppler map pour la frame {frame_idx}: {str(e)}")
@@ -245,7 +240,7 @@ def main():
                 X, Y = np.meshgrid(range_axis, velocity_axis)
                 
                 # Créer la surface 3D
-                surf = ax.plot_surface(X, Y, rdm, cmap='jet', 
+                surf = ax.plot_surface(X, Y, rdm, cmap='viridis', 
                                       vmin=vmin, vmax=vmax,
                                       linewidth=0, antialiased=True)
                 
