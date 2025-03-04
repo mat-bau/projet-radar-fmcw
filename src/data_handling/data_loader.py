@@ -14,6 +14,8 @@ def load_fmcw_data(filepath):
     --------
     data_dict : dict
         Dictionnaire contenant les données et les paramètres
+    parms : dict
+        Dictionnaire contenant les paramètres du radar
     """
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"Le fichier {filepath} n'existe pas.")
@@ -78,7 +80,7 @@ def extract_frame(data, frame_index=0, channel_indices=(0, 1)):
     Q = data[frame_index, channel_indices[1], :]
     
     # e_z
-    complex_data = I - 1j * Q
+    complex_data = I + 1j * Q
     
     return complex_data
 
@@ -103,8 +105,9 @@ def reshape_to_chirps(complex_data, params, methode=2):
     Mc = int(params['num_chirps'])         
     
     expected_size = int(Mc * Ms)
-    actual_size = len(complex_data)
-
+    actual_size = len(complex_data) # oui il y a les échantillon de la pause
+    
+    # pas la bonne méthode
     if methode == 1:
         # on tronque ou on complète
         if actual_size >= expected_size:
@@ -126,7 +129,7 @@ def reshape_to_chirps(complex_data, params, methode=2):
                 Ms = total_samples // Mc
             else:
                 Ms = total_samples // Mc
-                complex_data = complex_data[:Ms * Mc]
+                complex_data = complex_data[:Mc]
             radar_data = np.reshape(complex_data, (Mc, Ms)) # ligne de taille Mc (info sur Doppler) et colonne de taille Ms (info sur distance)
-            
-            return radar_data
+        print(radar_data.shape)
+        return radar_data
