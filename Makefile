@@ -10,11 +10,12 @@ EXAMPLES_DIR = examples
 # Exécutable principal
 MAIN_SCRIPT = analyze_radar.py
 ANIM_SCRIPT = animate_radar.py
+
 # Cibles principales
-.PHONY: all setup run-ms1 run-animation clean
+.PHONY: all setup run-MS1-FMCW clean
 
 # Cible par défaut
-all: setup
+all: run-MS1-FMCW
 
 # Installation des dépendances
 setup:
@@ -57,6 +58,7 @@ runanim3d-%:
 	@mkdir -p output/$*
 	RADAR_DATA_FILE=$(DATA_DIR)/$*.npz $(PYTHON) $(EXAMPLES_DIR)/$(ANIM_SCRIPT) --output-dir=output/$* --view-type=3d
 
+# Animation combinée
 runanimcombined-%:
 	@echo "Création d'une animation combinée pour le fichier data/$*.npz"
 	RADAR_DATA_FILE=data/$*.npz python3 $(EXAMPLES_DIR)/$(ANIM_SCRIPT) --output-dir=output/$* --fps=10 --dynamic-range=20 --detect-targets --view-type=combined --background-file $(DATA_DIR)/background1.npz
@@ -80,10 +82,12 @@ help:
 	@echo "  make clean         - Nettoyer les fichiers temporaires"
 	@echo "  make help          - Afficher cette aide"
 	@echo "  make run-FICHIER      - Exécute l'analyse sur FICHIER.npz (dans le répertoire $(DATA_DIR))"
+	@echo "  make runanim...-FICHIER - Crée une animation pour FICHIER.npz"
 	@echo "  make help             - Affiche cette aide"
 	@echo "  make clean            - Nettoie les fichiers générés"
 	@echo ""
 	@echo "Exemples:"
 	@echo "  make run-MS1-FMCW     - Analyse le fichier data/MS1-FMCW.npz"
-	@echo "  make run-anim-MS1-FMCW    - Crée une animation 2D du fichier data/MS1-FMCW.npz"
-	@echo "  make run-anim-3d-MS1-FMCW - Crée une animation 3D du fichier data/MS1-FMCW.npz"
+	@echo "  make runanim-MS1-FMCW    - Crée une animation 2D du fichier data/MS1-FMCW.npz"
+	@echo "  make runanim-3d-MS1-FMCW - Crée une animation 3D du fichier data/MS1-FMCW.npz"
+	@echo "  make runanimcombined-MS1-FMCW - Crée une animation combinez avec les profils range et vitesse et la rdm du fichier data/MS1-FMCW.npz"
