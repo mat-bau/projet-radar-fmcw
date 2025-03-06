@@ -11,11 +11,11 @@ EXAMPLES_DIR = examples
 MAIN_SCRIPT = analyze_radar.py
 ANIM_SCRIPT = animate_radar.py
 
-# Cibles principales
-.PHONY: all setup run-MS1-FMCW clean
+# Cibles principales, mettre les toutes regles sinon ca bug
+.PHONY: all setup run-% runanim-% runanim3d-% runanimcombined-% clean help
 
 # Cible par défaut
-all: run-MS1-FMCW
+all: setup
 
 # Installation des dépendances
 setup:
@@ -31,13 +31,11 @@ requirements.txt:
 
 # Exécution du script d'analyse simple
 run-%:
-	@echo "Analyse du fichier $(DATA_DIR)/$*.npz"
 	@if [ ! -f "$(DATA_DIR)/$*.npz" ]; then \
 		echo "Erreur: Le fichier $(DATA_DIR)/$*.npz n'existe pas"; \
 		exit 1; \
 	fi
 	RADAR_DATA_FILE=$(DATA_DIR)/$*.npz $(PYTHON) $(EXAMPLES_DIR)/$(MAIN_SCRIPT)
-
 # Animation 2D
 runanim-%:
 	@echo "Création d'une animation 2D pour le fichier $(DATA_DIR)/$*.npz"
