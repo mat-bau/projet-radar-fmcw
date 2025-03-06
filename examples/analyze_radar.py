@@ -64,7 +64,7 @@ def main():
                        help='Répertoire de sortie pour les visualisations')
     parser.add_argument('--detect-targets', action='store_true',
                        help='Activer la détection de cibles avec CFAR')
-    parser.add_argument('--dynamic-range', type=int, default=0,
+    parser.add_argument('--dynamic-range', type=int, default=20, # a changer pour voir plus en profondeur!!!
                        help='Plage dynamique en dB pour la visualisation')
     parser.add_argument('--range-padding', type=int, default=20,
                        help='Facteur de zero-padding pour l\'axe distance')
