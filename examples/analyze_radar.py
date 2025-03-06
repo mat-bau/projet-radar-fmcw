@@ -13,13 +13,39 @@ from src.data_handling.data_loader import load_fmcw_data, extract_frame, reshape
 from src.signal_processing.range_doppler_map import (
     generate_range_profile, 
     generate_range_doppler_map_with_axes,
-    apply_cfar_detector
+    apply_cfar_detector,
+    remove_static_components,
+    apply_clutter_threshold,
+    estimate_target_parameters
 )
 from src.visualization.plotting import (
     plot_range_profile, 
     plot_range_doppler,
     visualize_3d_range_doppler
 )
+
+def subtract_background(data, background_data):
+    """
+    Soustrait les données de fond des données radar
+    
+    Parameters:
+    -----------
+    data : ndarray
+        Données radar originales
+    background_data : ndarray
+        Données de fond à soustraire
+        
+    Returns:
+    --------
+    subtracted_data : ndarray
+        Données radar avec le fond soustrait
+    """
+    # S'assurer que les données ont la même forme
+    if data.shape != background_data.shape:
+        raise ValueError(f"Les dimensions des données ({data.shape}) et du fond ({background_data.shape}) ne correspondent pas")
+    
+    # Les données sont complexes, donc on fait une soustraction complexe
+    return data - background_data
 
 def main():
     """Fonction principale pour l'analyse des données FMCW"""
@@ -28,25 +54,41 @@ def main():
     parser = argparse.ArgumentParser(description='Analyse des données FMCW')
     parser.add_argument('--data-file', type=str, required=False,
                        help='Chemin vers le fichier de données')
-    parser.add_argument('--frame', type=int, default=0, # dans nos fichiers de labo, il y en a généralement 30 faut que je trouve un moyen de l'animer ou quoi
+    parser.add_argument('--background-file', type=str, required=False,
+                       help='Chemin vers le fichier de données de fond pour la soustraction')
+    parser.add_argument('--frame', type=int, default=0,
                        help='Indice de la frame à analyser')
     parser.add_argument('--output-dir', type=str, default=None,
                        help='Répertoire de sortie pour les visualisations')
     parser.add_argument('--detect-targets', action='store_true',
                        help='Activer la détection de cibles avec CFAR')
-    parser.add_argument('--dynamic-range', type=int, default=40,
+    parser.add_argument('--dynamic-range', type=int, default=0,
                        help='Plage dynamique en dB pour la visualisation')
-    parser.add_argument('--range-padding', type=int, default=10,
+    parser.add_argument('--range-padding', type=int, default=20,
                        help='Facteur de zero-padding pour l\'axe distance')
-    parser.add_argument('--doppler-padding', type=int, default=10,
+    parser.add_argument('--doppler-padding', type=int, default=20,
                        help='Facteur de zero-padding pour l\'axe Doppler')
     parser.add_argument('--window-type', type=str, default='hann',
                        help='Type de fenêtre à appliquer (hann, hamming, blackman, etc.)')
+    parser.add_argument('--remove-static', action='store_true',
+                       help='Supprimer les composantes statiques de la Range-Doppler map')
+    parser.add_argument('--clutter-threshold', type=float, default=0.0,
+                       help='Seuil pour la suppression du clutter (0.0 = désactivé)')
+    parser.add_argument('--cfar-method', type=str, default='CA', choices=['CA', 'OS'],
+                       help='Méthode CFAR à utiliser (CA pour Cell Averaging, OS pour Ordered Statistics)')
+    parser.add_argument('--cfar-threshold', type=float, default=15.0,
+                       help='Facteur de seuil en dB pour la détection CFAR')
+    parser.add_argument('--cfar-percentile', type=int, default=75,
+                       help='Percentile à utiliser pour la méthode CFAR OS (0-100)')
+    parser.add_argument('--apply-2d-filter', action='store_true',
+                       help='Appliquer un filtre médian 2D pour réduire le bruit')
+    parser.add_argument('--filter-size', type=int, default=3,
+                       help='Taille du noyau pour le filtre médian 2D')
+    parser.add_argument('--estimate-targets', action='store_true',
+                       help='Estimer les paramètres précis des cibles par interpolation')
     args = parser.parse_args()
     
-    # # # # # # # # # # # # # #
-    # Parse le nom du fichier #
-    # # # # # # # # # # # # # #
+    # Si aucun fichier n'est spécifié dans les arguments, utiliser la variable d'environnement
     if args.data_file is None:
         if 'RADAR_DATA_FILE' in os.environ:
             args.data_file = os.environ['RADAR_DATA_FILE']
@@ -70,6 +112,22 @@ def main():
     
     try:
         data, params = load_fmcw_data(args.data_file)
+        
+        # Charger les données de fond si spécifiées
+        background_data = None
+        if args.background_file:
+            if not os.path.exists(args.background_file):
+                print(f"Attention: Le fichier de fond {args.background_file} n'existe pas. Aucune soustraction de fond ne sera effectuée.")
+            else:
+                print(f"Chargement des données de fond depuis {args.background_file}...")
+                background_data_array, _ = load_fmcw_data(args.background_file)
+                
+                # Vérifier que les dimensions correspondent
+                if background_data_array.shape != data.shape:
+                    print(f"Attention: Les dimensions des données de fond ({background_data_array.shape}) ne correspondent pas aux données radar ({data.shape}). Aucune soustraction de fond ne sera effectuée.")
+                    background_data = None
+                else:
+                    background_data = background_data_array
         
         # Check que la frame demandée existe
         if args.frame >= data.shape[0]:
@@ -103,15 +161,24 @@ def main():
         
         print(f"\nAnalyse de la frame {args.frame}...")
         
+        ###########################
+        # Démaraage de l'analyse #
+        ###########################
+        
         # Extraire une frame (I1 et Q1)
         complex_data = extract_frame(data, frame_index=args.frame, channel_indices=(0, 1))
         
-        radar_data = reshape_to_chirps(complex_data, params, 2) # e_z
+        # Soustraire le fond si spécifié
+        if background_data is not None:
+            bg_complex_data = extract_frame(background_data, frame_index=args.frame, channel_indices=(0, 1))
+            complex_data = subtract_background(complex_data, bg_complex_data)
+        
+        radar_data = reshape_to_chirps(complex_data, params, "without_pause")
         
         print(f"Forme des données après reshape: {radar_data.shape}")
         print("\nGénération des visualisations...")
         
-        # 1. Profil de distance (à voir si c'est vraiment utile)
+        # 1. Profil de distance
         print("Génération du profil de distance...")
         try:
             range_profile = generate_range_profile(radar_data, window_type=args.window_type)
@@ -130,7 +197,6 @@ def main():
             save_path=f"{args.output_dir}/range_profile_frame{args.frame}.pdf"
         )
         
-
         # 2. Range-Doppler map avec la nouvelle fonction qui retourne aussi les axes
         print("Génération de la Range-Doppler Map avec zero-padding...")
         try:
@@ -139,7 +205,9 @@ def main():
                 params,
                 window_type=args.window_type,
                 range_padding_factor=args.range_padding,
-                doppler_padding_factor=args.doppler_padding
+                doppler_padding_factor=args.doppler_padding,
+                apply_2d_filter=args.apply_2d_filter,
+                kernel_size=args.filter_size
             )
             
             print(f"Shape de la Range-Doppler Map après zero-padding: {range_doppler_map.shape}")
@@ -154,19 +222,43 @@ def main():
             range_axis = range_axis_no_padding
             velocity_axis = calculate_velocity_axis(params)
         
+        # Appliquer les traitements supplémentaires si demandés
+        if args.remove_static:
+            print("Suppression des composantes statiques...")
+            range_doppler_map = remove_static_components(range_doppler_map, linear_scale=False)
+        
+        if args.clutter_threshold > 0:
+            print(f"Application d'un seuil de clutter de {args.clutter_threshold} dB...")
+            range_doppler_map = apply_clutter_threshold(range_doppler_map, args.clutter_threshold)
+        
         # Application de la détection CFAR si demandée
         detections = None
+        targets = None
+        
         if args.detect_targets:
-            print("Application de la détection CFAR...")
+            print(f"Application de la détection CFAR ({args.cfar_method})...")
             try:
                 detections = apply_cfar_detector(
                     range_doppler_map, 
                     guard_cells=(2, 4), 
                     training_cells=(4, 8),
-                    threshold_factor=15.0
+                    threshold_factor=args.cfar_threshold,
+                    cfar_method=args.cfar_method,
+                    percentile=args.cfar_percentile
                 )
                 num_targets = np.sum(detections)
                 print(f"Nombre de cibles détectées: {num_targets}")
+                
+                # Estimation des paramètres des cibles si demandée
+                if args.estimate_targets and num_targets > 0:
+                    print("Estimation des paramètres précis des cibles...")
+                    targets = estimate_target_parameters(range_doppler_map, detections, range_axis, velocity_axis)
+                    
+                    # Affichage des cibles estimées
+                    print("\nCibles détectées:")
+                    for i, target in enumerate(targets):
+                        print(f"Cible {i+1}: distance = {target['range']:.2f} m, vitesse = {target['velocity']:.2f} m/s, amplitude = {target['amplitude']:.2f} dB")
+                
             except Exception as e:
                 print(f"Erreur lors de la détection CFAR: {str(e)}")
         
@@ -180,13 +272,22 @@ def main():
             
             plt.pcolormesh(range_axis, velocity_axis, range_doppler_map, 
                           cmap='jet', vmin=vmin, vmax=vmax, shading='auto')
-            det_doppler_idx, det_range_idx = np.where(detections)
             
-            # Indices vers valeurs physiques
-            det_ranges = [range_axis[idx] if idx < len(range_axis) else 0 for idx in det_range_idx]
-            det_velocities = [velocity_axis[idx] if idx < len(velocity_axis) else 0 for idx in det_doppler_idx]
+            if targets is not None and args.estimate_targets:
+                # Utiliser les positions estimées des cibles
+                target_ranges = [target['range'] for target in targets]
+                target_velocities = [target['velocity'] for target in targets]
+                plt.scatter(target_ranges, target_velocities, c='r', marker='x', s=50, label='Détections (estimées)')
+            else:
+                # Utiliser les positions brutes des détections CFAR
+                det_doppler_idx, det_range_idx = np.where(detections)
+                
+                # Indices vers valeurs physiques
+                det_ranges = [range_axis[idx] if idx < len(range_axis) else 0 for idx in det_range_idx]
+                det_velocities = [velocity_axis[idx] if idx < len(velocity_axis) else 0 for idx in det_doppler_idx]
+                
+                plt.scatter(det_ranges, det_velocities, c='r', marker='x', s=50, label='Détections')
             
-            plt.scatter(det_ranges, det_velocities, c='r', marker='x', s=50, label='Détections')
             plt.legend()
             
             plt.colorbar(label='Magnitude (dB)')
@@ -202,7 +303,7 @@ def main():
             print(f"Carte Range-Doppler avec détections sauvegardée dans {detect_path}")
         else:
             # Dans plotting.py
-            print("Pas de détection CFAR, visualisation normale...")
+            print("Pas de détection CFAR ou détections demandées, visualisation normale...")
             filename_base = os.path.splitext(os.path.basename(args.data_file))[0]
             fig2 = plot_range_doppler(
                 range_doppler_map, 
