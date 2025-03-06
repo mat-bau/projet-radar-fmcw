@@ -1,5 +1,6 @@
 import numpy as np
 from scipy import signal
+from scipy import ndimage
 
 def apply_window(data, window_type='hann'):
     """
@@ -20,15 +21,18 @@ def apply_window(data, window_type='hann'):
     """
     Mc, Ms = data.shape
     
-    # crée les fenêtres
-    range_window = getattr(signal.windows, window_type)(Ms)
-    doppler_window = getattr(signal.windows, window_type)(Mc)
+    try:
+        # Créer les fenêtres
+        range_window = getattr(signal.windows, window_type)(Ms)
+        doppler_window = getattr(signal.windows, window_type)(Mc)
+    except AttributeError:
+        # Fallback si le type de fenêtre n'existe pas
+        print(f"Type de fenêtre '{window_type}' non disponible, utilisation de 'hann' à la place.")
+        range_window = signal.windows.hann(Ms)
+        doppler_window = signal.windows.hann(Mc)
     
-    # Appliquer la fenêtre en distance ici colonnes
-    windowed_data = data * range_window[np.newaxis, :]
-    
-    # Appliquer la fenêtre en vitesse ici lignes
-    windowed_data = windowed_data * doppler_window[:, np.newaxis]
+    # Application efficace des fenêtres (broadcasting NumPy)
+    windowed_data = data * range_window[np.newaxis, :] * doppler_window[:, np.newaxis]
     
     return windowed_data
 
@@ -51,8 +55,15 @@ def generate_range_profile(data, window_type='hann'):
     """
     Mc, Ms = data.shape
     
-    # fenêtre en distance uniquement
-    range_window = getattr(signal.windows, window_type)(Ms)
+    try:
+        # Fenêtre en distance uniquement
+        range_window = getattr(signal.windows, window_type)(Ms)
+    except AttributeError:
+        # Fallback si le type de fenêtre n'existe pas
+        print(f"Type de fenêtre '{window_type}' non disponible, utilisation de 'hann' à la place.")
+        range_window = signal.windows.hann(Ms)
+    
+    # Application de la fenêtre
     windowed_data = data * range_window[np.newaxis, :]
     
     # FFT sur chaque chirp (dimension distance)
@@ -61,13 +72,14 @@ def generate_range_profile(data, window_type='hann'):
     # Moyenner sur tous les chirps
     range_profile = np.mean(np.abs(range_fft), axis=0)
     
-    # convertion en dB
-    range_profile_db = 20 * np.log10(range_profile + 1e-15)
+    # Conversion en dB avec protection contre les valeurs nulles
+    range_profile_db = 20 * np.log10(np.maximum(range_profile, 1e-15))
     
     return range_profile_db
 
 def generate_range_doppler_map_with_axes(data, params, window_type='hann', 
-                                        range_padding_factor=2, doppler_padding_factor=4,):
+                                        range_padding_factor=2, doppler_padding_factor=4,
+                                        apply_2d_filter=False, kernel_size=3):
     """
     Génère une Range-Doppler map à partir des données radar avec zero-padding
     et retourne également les axes physiques
@@ -89,6 +101,12 @@ def generate_range_doppler_map_with_axes(data, params, window_type='hann',
     doppler_padding_factor : int
         Facteur de zero-padding pour l'axe Doppler (1 = pas de padding)
         
+    apply_2d_filter : bool
+        Appliquer un filtre médian 2D pour réduire le bruit
+        
+    kernel_size : int
+        Taille du noyau pour le filtre médian (si apply_2d_filter=True)
+        
     Returns:
     --------
     range_doppler_map : ndarray
@@ -100,39 +118,44 @@ def generate_range_doppler_map_with_axes(data, params, window_type='hann',
     velocity_axis : ndarray
         Axe de vitesse en m/s
     """
-    # ici on prend pas direct du dictionnaire de paramètres pcq il y a une pause M = Mc*(Ms+Mpause)
+    # Obtenir les dimensions des données
     Mc, Ms = data.shape
     
     # Nouvelles dimensions avec zero-padding
     padded_Ms = Ms * range_padding_factor
-    # print(f"padded_Ms: {padded_Ms}")
     padded_Mc = Mc * doppler_padding_factor
     
+    # pour réduire les composantes DC
+    data = data - np.mean(data, axis=0, keepdims=True)
+    
+    # Appliquer la fenêtre aux données
     windowed_data = apply_window(data, window_type)
     
-    """
-    # 1ère FFT le long des lignes pour la distance
+    # Calcul de la Range-Doppler map avec FFT2D
+    # 1. FFT sur l'axe de la distance (axe 1)
     range_fft = np.fft.fft(windowed_data, n=padded_Ms, axis=1)
-    # print(f"range_fft vite fait: {range_fft}") # encore du mal avec ce padding
-    # 2e FFT le long des colonnes pour la vitesse
+    
+    # 2. FFT sur l'axe Doppler (axe 0)
     range_doppler_map = np.fft.fft(range_fft, n=padded_Mc, axis=0)
-
-    # et shift pour avoir 0 au centre
+    
+    # 3. Shift pour centrer les vitesses autour de zéro
     range_doppler_map = np.fft.fftshift(range_doppler_map, axes=0)
-    """
-
-    # FFT2 (premier axe = distance, deuxième axe = vitesse)
-    range_doppler_map = np.fft.fftshift(np.abs(np.fft.fft2(windowed_data, s=(padded_Mc, padded_Ms))), axes=0)
-    # calcule les axes physiques
+    
+    # Calculer les axes physiques correspondants
     range_axis = calculate_range_axis(params, padded_Ms)
     velocity_axis = calculate_velocity_axis(params, padded_Mc)
     
+    # Calcul de la magnitude
     range_doppler_magnitude = np.abs(range_doppler_map)
     
-    range_doppler_db = 20 * np.log10(range_doppler_magnitude)
+    # Appliquer un filtre médian si demandé pour réduire le bruit
+    if apply_2d_filter:
+        range_doppler_magnitude = ndimage.median_filter(range_doppler_magnitude, size=kernel_size)
+    
+    # Conversion en dB avec protection contre les valeurs nulles
+    range_doppler_db = 20 * np.log10(np.maximum(range_doppler_magnitude, 1e-15))
     
     return range_doppler_db, range_axis, velocity_axis
-
 
 def calculate_range_axis(params, padded_samples=None):
     """
@@ -151,7 +174,7 @@ def calculate_range_axis(params, padded_samples=None):
     range_axis : ndarray
         Axe de distance en mètres
     """
-    # pour check que les paramètres nécessaires sont présents
+    # Vérifier que les paramètres nécessaires sont présents
     if 'samples_per_chirp' not in params or 'range_resolution' not in params:
         raise KeyError("Paramètres manquants: 'samples_per_chirp' ou 'range_resolution'")
     
@@ -165,10 +188,10 @@ def calculate_range_axis(params, padded_samples=None):
     # Calcul de la nouvelle résolution avec zero-padding
     actual_resolution = range_resolution * (Ms / padded_samples)
 
+    # Créer l'axe de distance
     range_axis = np.arange(padded_samples) * actual_resolution
     
     return range_axis
-
 
 def calculate_velocity_axis(params, padded_chirps=None):
     """
@@ -202,7 +225,7 @@ def calculate_velocity_axis(params, padded_chirps=None):
         padded_chirps = Mc
     
     # Calcul de la vitesse maximale sans ambiguïté
-    wavelength = 3e8 / f0  # Longueur d'onde
+    wavelength = 3e8 / f0  # Longueur d'onde (c/f)
     velocity_max = wavelength / (4 * Tc)  # Vitesse maximale sans ambiguïté
     
     # Calcul de la résolution de vitesse avec zero-padding
@@ -212,7 +235,6 @@ def calculate_velocity_axis(params, padded_chirps=None):
     velocity_axis = np.arange(-padded_chirps//2, padded_chirps//2) * velocity_resolution
     
     return velocity_axis
-
 
 def generate_range_doppler_map(data, window_type='hann', range_padding_factor=2, doppler_padding_factor=2):
     """
@@ -243,18 +265,26 @@ def generate_range_doppler_map(data, window_type='hann', range_padding_factor=2,
     padded_Ms = Ms * range_padding_factor
     padded_Mc = Mc * doppler_padding_factor
     
-    # fenetre tjrs pour second lobe
-    windowed_data = apply_window(data, window_type)
+    # Prétraitement: soustraire la moyenne pour réduire les composantes DC
+    centered_data = data - np.mean(data, axis=0, keepdims=True)
     
+    # Fenêtre pour réduire les lobes secondaires
+    windowed_data = apply_window(centered_data, window_type)
+    
+    # FFT 2D avec padding
     range_fft = np.fft.fft(windowed_data, n=padded_Ms, axis=1)
     range_doppler_map = np.fft.fft(range_fft, n=padded_Mc, axis=0)
 
+    # Shift pour centrer les vitesses autour de zéro
     range_doppler_map = np.fft.fftshift(range_doppler_map, axes=0)
-    range_doppler_db = 20 * np.log10(np.abs(range_doppler_map))
+    
+    # Conversion en dB avec protection contre les valeurs nulles
+    range_doppler_db = 20 * np.log10(np.maximum(np.abs(range_doppler_map), 1e-15))
     
     return range_doppler_db
 
-def apply_cfar_detector(range_doppler_map, guard_cells=(2, 4), training_cells=(4, 8), threshold_factor=13.0):
+def apply_cfar_detector(range_doppler_map, guard_cells=(2, 4), training_cells=(4, 8), 
+                        threshold_factor=13.0, cfar_method='CA', percentile=75):
     """
     Applique un détecteur CFAR (Constant False Alarm Rate) sur la carte Range-Doppler
     
@@ -271,6 +301,12 @@ def apply_cfar_detector(range_doppler_map, guard_cells=(2, 4), training_cells=(4
 
     threshold_factor : float
         Facteur de seuil en dB
+        
+    cfar_method : str
+        Méthode CFAR à utiliser ('CA' pour Cell Averaging, 'OS' pour Ordered Statistics)
+    
+    percentile : int
+        Percentile à utiliser pour CFAR OS (entre 0 et 100)
         
     Returns:
     --------
@@ -314,11 +350,153 @@ def apply_cfar_detector(range_doppler_map, guard_cells=(2, 4), training_cells=(4
                 train_range:train_range + 2*guard_range + 1
             ] = False
             
-            # Calculer le niveau de bruit moyen
-            noise_level = np.mean(window[mask])
+            # Calculer le niveau de bruit selon la méthode choisie
+            if cfar_method.upper() == 'CA':
+                # Cell Averaging CFAR
+                noise_level = np.mean(window[mask])
+            elif cfar_method.upper() == 'OS':
+                # Ordered Statistics CFAR
+                training_cells_values = window[mask].flatten()
+                training_cells_values = np.sort(training_cells_values)
+                index = int(len(training_cells_values) * percentile / 100)
+                noise_level = training_cells_values[index]
+            else:
+                # Par défaut, utiliser Cell Averaging
+                noise_level = np.mean(window[mask])
             
             # Appliquer le seuil
             if range_doppler_map[i, j] > noise_level + threshold_factor:
                 detections[i, j] = True
     
     return detections
+
+def estimate_target_parameters(range_doppler_map, detections, range_axis, velocity_axis):
+    """
+    Estime les paramètres précis des cibles détectées par interpolation parabolique
+    
+    Parameters:
+    -----------
+    range_doppler_map : ndarray
+        Carte Range-Doppler en dB
+    detections : ndarray
+        Masque binaire indiquant les détections CFAR
+    range_axis : ndarray
+        Axe de distance en mètres
+    velocity_axis : ndarray
+        Axe de vitesse en m/s
+        
+    Returns:
+    --------
+    targets : list of dict
+        Liste des cibles détectées avec leurs paramètres estimés
+    """
+    doppler_indices, range_indices = np.where(detections)
+    
+    targets = []
+    
+    for i in range(len(doppler_indices)):
+        d_idx = doppler_indices[i]
+        r_idx = range_indices[i]
+        
+        # S'assurer qu'on n'est pas au bord de la carte
+        if (d_idx > 0 and d_idx < range_doppler_map.shape[0] - 1 and 
+            r_idx > 0 and r_idx < range_doppler_map.shape[1] - 1):
+            
+            # Extraire les valeurs pour l'interpolation
+            range_values = range_doppler_map[d_idx, r_idx-1:r_idx+2]
+            doppler_values = range_doppler_map[d_idx-1:d_idx+2, r_idx]
+            
+            # Interpolation parabolique pour la distance
+            if range_values[0] < range_values[1] > range_values[2]:  # Vérifier qu'on a bien un pic
+                delta_r = 0.5 * (range_values[0] - range_values[2]) / (range_values[0] - 2*range_values[1] + range_values[2])
+                range_refined = range_axis[r_idx] + delta_r * (range_axis[1] - range_axis[0])
+            else:
+                range_refined = range_axis[r_idx]
+            
+            # Interpolation parabolique pour la vitesse
+            if doppler_values[0] < doppler_values[1] > doppler_values[2]:  # Vérifier qu'on a bien un pic
+                delta_d = 0.5 * (doppler_values[0] - doppler_values[2]) / (doppler_values[0] - 2*doppler_values[1] + doppler_values[2])
+                velocity_refined = velocity_axis[d_idx] + delta_d * (velocity_axis[1] - velocity_axis[0])
+            else:
+                velocity_refined = velocity_axis[d_idx]
+            
+            # Amplitude estimée
+            amplitude = range_doppler_map[d_idx, r_idx]
+            
+            # Ajouter la cible à la liste
+            target = {
+                'range': range_refined,
+                'velocity': velocity_refined,
+                'amplitude': amplitude,
+                'range_index': r_idx,
+                'doppler_index': d_idx
+            }
+            
+            targets.append(target)
+    
+    return targets
+
+def remove_static_components(range_doppler_map, linear_scale=True):
+    """
+    Supprime les composantes statiques (vitesse proche de zéro) de la Range-Doppler map
+    
+    Parameters:
+    -----------
+    range_doppler_map : ndarray
+        Carte Range-Doppler en dB ou en échelle linéaire
+    linear_scale : bool
+        Indique si les données sont déjà en échelle linéaire ou en dB
+        
+    Returns:
+    --------
+    processed_map : ndarray
+        Carte Range-Doppler avec composantes statiques supprimées (même échelle que l'entrée)
+    """
+    # Conversion en linéaire si nécessaire
+    if not linear_scale:
+        linear_data = 10**(range_doppler_map/20)
+    else:
+        linear_data = range_doppler_map.copy()
+    
+    # Moyenne sur l'axe de distance pour chaque vitesse
+    column_means = np.mean(linear_data, axis=1, keepdims=True)
+    
+    # Soustraire la moyenne
+    linear_data_no_static = linear_data - column_means
+    
+    # Reconvertir en dB si nécessaire
+    if not linear_scale:
+        processed_map = 20 * np.log10(np.maximum(np.abs(linear_data_no_static), 1e-15))
+    else:
+        processed_map = linear_data_no_static
+    
+    return processed_map
+
+def apply_clutter_threshold(range_doppler_map, threshold_db):
+    """
+    Applique un seuil de clutter à la Range-Doppler map
+    
+    Parameters:
+    -----------
+    range_doppler_map : ndarray
+        Carte Range-Doppler en dB
+    threshold_db : float
+        Seuil en dB sous le maximum
+        
+    Returns:
+    --------
+    thresholded_map : ndarray
+        Carte Range-Doppler avec seuil appliqué
+    """
+    if threshold_db <= 0:
+        return range_doppler_map
+    
+    # Calculer le seuil
+    max_val = np.max(range_doppler_map)
+    threshold = max_val - threshold_db
+    
+    # Appliquer le seuil
+    thresholded_map = range_doppler_map.copy()
+    thresholded_map[thresholded_map < threshold] = threshold
+    
+    return thresholded_map
