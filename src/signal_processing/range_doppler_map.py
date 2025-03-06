@@ -131,7 +131,6 @@ def generate_range_doppler_map_with_axes(data, params, window_type='hann',
     # Appliquer la fenêtre aux données
     windowed_data = apply_window(data, window_type)
     
-    # Calcul de la Range-Doppler map avec FFT2D
     # 1. FFT sur l'axe de la distance (axe 1)
     range_fft = np.fft.fft(windowed_data, n=padded_Ms, axis=1)
     
