@@ -45,7 +45,7 @@ runanim-%:
 		exit 1; \
 	fi
 	@mkdir -p output/$*
-	RADAR_DATA_FILE=$(DATA_DIR)/$*.npz $(PYTHON) $(EXAMPLES_DIR)/$(ANIM_SCRIPT) --output-dir=output/$* --view-type=2d
+	RADAR_DATA_FILE=$(DATA_DIR)/$*.npz $(PYTHON) $(EXAMPLES_DIR)/$(ANIM_SCRIPT) --output-dir=output/$* --view-type=2d --background-file $(DATA_DIR)/background1.npz
 
 # Animation 3D
 runanim3d-%:
@@ -59,7 +59,7 @@ runanim3d-%:
 
 runanimcombined-%:
 	@echo "Création d'une animation combinée pour le fichier data/$*.npz"
-	RADAR_DATA_FILE=data/$*.npz python3 examples/animate_radar.py --output-dir=output/$* --fps=10 --dynamic-range=20 --detect-targets --view-type=combined
+	RADAR_DATA_FILE=data/$*.npz python3 $(EXAMPLES_DIR)/$(ANIM_SCRIPT) --output-dir=output/$* --fps=10 --dynamic-range=20 --detect-targets --view-type=combined --background-file $(DATA_DIR)/background1.npz
 
 # Nettoyage
 clean:

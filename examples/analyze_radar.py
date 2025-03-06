@@ -40,6 +40,8 @@ def subtract_background(data, background_data):
     subtracted_data : ndarray
         Données radar avec le fond soustrait
     """
+    # je dois encore y regarder ca ne fait pas ce que je veux 
+
     # S'assurer que les données ont la même forme
     if data.shape != background_data.shape:
         raise ValueError(f"Les dimensions des données ({data.shape}) et du fond ({background_data.shape}) ne correspondent pas")
@@ -55,7 +57,7 @@ def main():
     parser.add_argument('--data-file', type=str, required=False,
                        help='Chemin vers le fichier de données')
     parser.add_argument('--background-file', type=str, required=False,
-                       help='Chemin vers le fichier de données de fond pour la soustraction')
+                       help='Chemin vers le fichier de données de fond pour la soustraction') # a changer dans le makefile
     parser.add_argument('--frame', type=int, default=0,
                        help='Indice de la frame à analyser')
     parser.add_argument('--output-dir', type=str, default=None,
