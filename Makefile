@@ -57,6 +57,10 @@ runanim3d-%:
 	@mkdir -p output/$*
 	RADAR_DATA_FILE=$(DATA_DIR)/$*.npz $(PYTHON) $(EXAMPLES_DIR)/$(ANIM_SCRIPT) --output-dir=output/$* --view-type=3d
 
+runanimcombined-%:
+	@echo "Création d'une animation combinée pour le fichier data/$*.npz"
+	RADAR_DATA_FILE=data/$*.npz python3 examples/animate_radar.py --output-dir=output/$* --fps=10 --dynamic-range=20 --detect-targets --view-type=combined
+
 # Nettoyage
 clean:
 	rm -rf __pycache__

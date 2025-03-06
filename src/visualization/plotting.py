@@ -41,7 +41,7 @@ def plot_range_profile(range_profile, range_axis, title="Profil de distance", sa
 
 def plot_range_doppler(range_doppler_map, range_axis, velocity_axis, 
                        title="Range-Doppler Map", 
-                       dynamic_range=60, 
+                       dynamic_range=40, 
                        save_path=None,
                        cmap='jet',
                        remove_static_components=True):
@@ -197,3 +197,58 @@ def visualize_3d_range_doppler(range_doppler_map, range_axis, velocity_axis,
         plt.savefig(save_path, dpi=300)
     
     return fig
+
+def create_combined_visualization(range_doppler_map, range_profile, range_axis, velocity_axis, 
+                                  title="Visualisation combinée", dynamic_range=40):
+    """
+    Crée une visualisation combinée avec la Range-Doppler map à droite
+    et les profils de distance et de vitesse à gauche
+    """
+    # Créer une figure avec une disposition en grille
+    fig = plt.figure(figsize=(16, 9))
+    gs = fig.add_gridspec(2, 2, width_ratios=[1, 2], height_ratios=[1, 1])
+    
+    # Axes pour le profil de distance (en haut à gauche)
+    ax_range = fig.add_subplot(gs[0, 0])
+    
+    # Correction: s'assurer que les dimensions correspondent
+    min_len = min(len(range_axis), len(range_profile))
+    ax_range.plot(range_axis[:min_len], range_profile[:min_len])
+    
+    ax_range.set_xlabel('Distance (m)')
+    ax_range.set_ylabel('Magnitude (dB)')
+    ax_range.set_title('Profil de distance')
+    ax_range.grid(True, linestyle='--', alpha=0.7)
+    
+    # Axes pour le profil de vitesse (en bas à gauche)
+    ax_velocity = fig.add_subplot(gs[1, 0])
+    # Calculer le profil de vitesse en moyennant la carte Range-Doppler le long de l'axe distance
+    velocity_profile = np.mean(range_doppler_map, axis=1)
+    ax_velocity.plot(velocity_axis, velocity_profile[:len(velocity_axis)])
+    ax_velocity.set_xlabel('Vitesse (m/s)')
+    ax_velocity.set_ylabel('Magnitude (dB)')
+    ax_velocity.set_title('Profil de vitesse')
+    ax_velocity.grid(True, linestyle='--', alpha=0.7)
+    ax_velocity.axvline(x=0, color='r', linestyle='--', alpha=0.5)
+    
+    # Axes pour la Range-Doppler map (à droite, sur toute la hauteur)
+    ax_rdm = fig.add_subplot(gs[:, 1])
+    
+    # Limiter la plage dynamique
+    vmax = np.max(range_doppler_map)
+    vmin = vmax - dynamic_range
+    
+    mesh = ax_rdm.pcolormesh(range_axis, velocity_axis, range_doppler_map[:len(velocity_axis), :len(range_axis)], 
+                            cmap='jet', vmin=vmin, vmax=vmax, shading='auto')
+    fig.colorbar(mesh, ax=ax_rdm, label='Magnitude (dB)')
+    ax_rdm.set_xlabel('Distance (m)')
+    ax_rdm.set_ylabel('Vitesse (m/s)')
+    ax_rdm.set_title('Range-Doppler Map')
+    ax_rdm.grid(True, linestyle='--', alpha=0.5)
+    ax_rdm.axhline(y=0, color='r', linestyle='-', alpha=0.3)
+    
+    # Titre global
+    fig.suptitle(title, fontsize=16)
+    plt.tight_layout()
+    
+    return fig, (ax_range, ax_velocity, ax_rdm)
