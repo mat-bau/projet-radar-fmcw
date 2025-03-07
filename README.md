@@ -60,11 +60,15 @@ Pour trouver cette nouvelle fréquence qui peut être très proche de la fréque
 
 $$ mix = sin(f_0t)\times sin(f_Dt) $$
 
+![Image](https://github.com/user-attachments/assets/6e0c9987-661f-4e78-a3b7-407501cf682e)
+
 C'est là qu'il faut se rappeler des formules de Simpson et on remarque qu'en multipliant nos 2 signaux on a en fait un nouveau signal composé de 2 nouveaux sinus
 
 $$ mix = \frac{1}{2}\times[cos((f_0-f_D)t)-cos((f_0+f_D)t)] $$ 
 
-Et on remarque que notre fréquence de battement $f_{beat}$ apparaît qui en pratique est d'ordre du kHz et on peut donc facilement récupérer cette fréquence de la fréquence de $f_0+f_D$ qui est de l'ordre du GHz avec un filtre passe-bas. Ainsi on peut enfin déterminer la vitesse radiale (pas angulaire!). Mais de là, on trouve un nouveau problème la fréquence haute une fois filtrée on se retrouve avec $cos(f_{beat}t)$ où l'on ne peut déterminer si la fréquence est positive ou négative. L'astuce est de mélanger **en quadrature** c'est à dire de multiplier notre signal reçu avec un signal décalé de 90°
+Et on remarque que notre fréquence de battement $f_{beat}$ y apparaît, en pratique elle est de l'ordre du kHz et on peut donc facilement récupérer cette fréquence de la fréquence de $f_0+f_D$ qui est de l'ordre du GHz avec un filtre passe-bas. Ainsi on peut enfin déterminer la vitesse radiale (pas angulaire!). Mais de là, on trouve un nouveau problème la fréquence haute une fois filtrée on se retrouve avec $cos(f_{beat}t)$ où l'on ne peut déterminer si la fréquence est positive ou négative. 
+
+L'astuce est de mélanger **en quadrature** c'est à dire de multiplier notre signal reçu avec un signal décalé de 90°. 
 
 2. **Traitement par chirps multiples** - En émettant une succession de rampes de fréquence (chirps) et en analysant les variations de phase entre ces chirps, le radar peut déterminer la vitesse des cibles.
 3. **Carte Range-Doppler** - En appliquant une double transformation de Fourier (2D-FFT) sur les données recueillies à partir de plusieurs chirps consécutifs:
