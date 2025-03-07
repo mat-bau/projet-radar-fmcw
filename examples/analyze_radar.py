@@ -9,7 +9,7 @@ from scipy import signal
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import des fonctions des packages dans src
-from src.data_handling.data_loader import load_fmcw_data, extract_frame, reshape_to_chirps
+from src.data_handling.data_loader import load_fmcw_data, extract_frame, reshape_to_chirps, subtract_background
 from src.signal_processing.range_doppler_map import (
     generate_range_profile, 
     generate_range_doppler_map_with_axes,
@@ -21,33 +21,9 @@ from src.signal_processing.range_doppler_map import (
 from src.visualization.plotting import (
     plot_range_profile, 
     plot_range_doppler,
-    visualize_3d_range_doppler
+    visualize_3d_range_doppler,
+    plot_spectrogram
 )
-
-def subtract_background(data, background_data):
-    """
-    Soustrait les données de fond des données radar
-    
-    Parameters:
-    -----------
-    data : ndarray
-        Données radar originales
-    background_data : ndarray
-        Données de fond à soustraire
-        
-    Returns:
-    --------
-    subtracted_data : ndarray
-        Données radar avec le fond soustrait
-    """
-    # je dois encore y regarder ca ne fait pas ce que je veux 
-
-    # S'assurer que les données ont la même forme
-    if data.shape != background_data.shape:
-        raise ValueError(f"Les dimensions des données ({data.shape}) et du fond ({background_data.shape}) ne correspondent pas")
-    
-    # Les données sont complexes, donc on fait une soustraction complexe
-    return data - background_data
 
 def main():
     """Fonction principale pour l'analyse des données FMCW"""
@@ -62,6 +38,8 @@ def main():
                        help='Indice de la frame à analyser')
     parser.add_argument('--output-dir', type=str, default=None,
                        help='Répertoire de sortie pour les visualisations')
+    parser.add_argument('--generate-spectrogram', action='store_true',
+                    help='Générer un spectrogramme des données radar')
     parser.add_argument('--detect-targets', action='store_true',
                        help='Activer la détection de cibles avec CFAR')
     parser.add_argument('--dynamic-range', type=int, default=20, # a changer pour voir plus en profondeur!!!
@@ -326,6 +304,19 @@ def main():
             title=f"Visualisation 3D Range-Doppler - {filename_base} - Frame {args.frame} (Padding {args.range_padding}x/{args.doppler_padding}x)",
             save_path=f"{args.output_dir}/range_doppler_3d_frame{args.frame}_{filename_base}.pdf"
         )
+
+        # 4. Générer le spectrogramme si demandé
+        if args.generate_spectrogram:
+            print("Génération du spectrogramme...")
+            filename_base = os.path.splitext(os.path.basename(args.data_file))[0]
+            fig4 = plot_spectrogram(
+                complex_data,
+                params,
+                title=f"Spectrogramme - {filename_base} - Frame {args.frame}",
+                save_path=f"{args.output_dir}/spectrogram_frame{args.frame}_{filename_base}.pdf"
+                )
+        
+        # génère tous les plots
         plt.show()
         print(f"\nToutes les visualisations ont été enregistrées dans le répertoire {args.output_dir}")
         

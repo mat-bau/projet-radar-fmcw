@@ -118,3 +118,28 @@ def reshape_to_chirps(complex_data, params, methode="without_pause"):
             radar_data = radar_data[:, :Ms]    # on enlève les échantillons de la pause à la fin de chaque colonne (chirp)
     
     return radar_data
+
+def subtract_background(data, background_data):
+    """
+    Soustrait les données de fond des données radar
+    
+    Parameters:
+    -----------
+    data : ndarray
+        Données radar originales
+    background_data : ndarray
+        Données de fond à soustraire
+        
+    Returns:
+    --------
+    subtracted_data : ndarray
+        Données radar avec le fond soustrait
+    """
+    # je dois encore y regarder ca ne fait pas ce que je veux 
+
+    # S'assurer que les données ont la même forme
+    if data.shape != background_data.shape:
+        raise ValueError(f"Les dimensions des données ({data.shape}) et du fond ({background_data.shape}) ne correspondent pas")
+    
+    # Les données sont complexes, donc on fait une soustraction complexe
+    return data - background_data
