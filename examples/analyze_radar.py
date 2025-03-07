@@ -97,7 +97,7 @@ def main():
         else:
             args.data_file = 'data/MS1-FMCW.npz'  # Par défaut
 
-    filename_base = os.path.splitext(os.path.basename(args.data_file))[0]
+    filename_base = os.path.splitext(os.path.basename(args.data_file))[0] # nom du fichier sans les extensions
 
     if args.output_dir is None:
         args.output_dir = os.path.join('output', filename_base)
@@ -124,7 +124,7 @@ def main():
                 print(f"Chargement des données de fond depuis {args.background_file}...")
                 background_data_array, _ = load_fmcw_data(args.background_file)
                 
-                # Vérifier que les dimensions correspondent
+                # Vérifier que les dimensions correspondent (nb de frames)
                 if background_data_array.shape != data.shape:
                     print(f"Attention: Les dimensions des données de fond ({background_data_array.shape}) ne correspondent pas aux données radar ({data.shape}). Aucune soustraction de fond ne sera effectuée.")
                     background_data = None
@@ -137,7 +137,7 @@ def main():
             args.frame = 0
             print(f"Utilisation de la frame 0 à la place.")
         
-        # Affichage des informations sur les données
+        # Qlq infos sur les données
         print("\nInformations sur les données:")
         print(f"Nombre de frames: {data.shape[0]}")
         print(f"Nombre de canaux: {data.shape[1]}")
@@ -164,10 +164,10 @@ def main():
         print(f"\nAnalyse de la frame {args.frame}...")
         
         ###########################
-        # Démaraage de l'analyse #
+        # Démarage de l'analyse #
         ###########################
         
-        # Extraire une frame (I1 et Q1)
+        # Extraire les données d'une frame (I1 et Q1)
         complex_data = extract_frame(data, frame_index=args.frame, channel_indices=(0, 1))
         
         # Soustraire le fond si spécifié

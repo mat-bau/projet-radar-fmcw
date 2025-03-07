@@ -2,6 +2,85 @@ import numpy as np
 from scipy import signal
 from scipy import ndimage
 
+def calculate_range_axis(params, padded_samples=None):
+    """
+    Calcule l'axe de distance pour la carte Range-Doppler avec prise en compte du zero-padding
+    
+    Parameters:
+    -----------
+    params : dict
+        Dictionnaire contenant les paramètres du radar
+        
+    padded_samples : int, optional
+        Nombre d'échantillons après zero-padding
+        
+    Returns:
+    --------
+    range_axis : ndarray
+        Axe de distance en mètres
+    """
+    # Vérifier que les paramètres nécessaires sont présents
+    if 'samples_per_chirp' not in params or 'range_resolution' not in params:
+        raise KeyError("Paramètres manquants: 'samples_per_chirp' ou 'range_resolution'")
+    
+    Ms = int(params['samples_per_chirp'])  # Convertir en entier pour éviter les problèmes de type
+    range_resolution = params['range_resolution']
+    
+    # Si padded_samples n'est pas spécifié, utiliser Ms
+    if padded_samples is None:
+        padded_samples = Ms
+    
+    # Calcul de la nouvelle résolution avec zero-padding
+    actual_resolution = range_resolution * (Ms / padded_samples)
+
+    # Créer l'axe de distance
+    range_axis = np.arange(padded_samples) * actual_resolution
+    
+    return range_axis
+
+def calculate_velocity_axis(params, padded_chirps=None):
+    """
+    Calcule l'axe de vitesse pour la carte Range-Doppler avec prise en compte du zero-padding
+    
+    Parameters:
+    -----------
+    params : dict
+        Dictionnaire contenant les paramètres du radar
+        
+    padded_chirps : int, optional
+        Nombre de chirps après zero-padding
+        
+    Returns:
+    --------
+    velocity_axis : ndarray
+        Axe de vitesse en m/s
+    """
+    # Vérifier que les paramètres nécessaires sont présents
+    required_params = ['start_freq', 'num_chirps', 'chirp_time']
+    for param in required_params:
+        if param not in params:
+            raise KeyError(f"Paramètre manquant: '{param}'")
+    
+    f0 = params['start_freq']
+    Mc = int(params['num_chirps'])
+    Tc = params['chirp_time']
+    
+    # Si padded_chirps n'est pas spécifié, utiliser Mc
+    if padded_chirps is None:
+        padded_chirps = Mc
+    
+    # Calcul de la vitesse maximale sans ambiguïté
+    wavelength = 3e8 / f0  # Longueur d'onde (c/f)
+    velocity_max = wavelength / (4 * Tc)  # Vitesse maximale sans ambiguïté
+    
+    # Calcul de la résolution de vitesse avec zero-padding
+    velocity_resolution = (2 * velocity_max) / padded_chirps
+    
+    # Axe de vitesse centré sur zéro
+    velocity_axis = np.arange(-padded_chirps//2, padded_chirps//2) * velocity_resolution
+    
+    return velocity_axis
+
 def apply_window(data, window_type='hann'):
     """
     Applique une fenêtre aux données pour réduire les lobes secondaires
@@ -35,6 +114,27 @@ def apply_window(data, window_type='hann'):
     windowed_data = data * range_window[np.newaxis, :] * doppler_window[:, np.newaxis]
     
     return windowed_data
+
+def remove_mean_per_row(data):
+    """
+    Supprime la moyenne temporelle de chaque ligne (chirp) dans les données radar
+    
+    Parameters:
+    -----------
+    data : ndarray
+        Données de forme (num_chirps, samples_per_chirp)
+        
+    Returns:
+    --------
+    processed_data : ndarray
+        Données avec la moyenne de chaque ligne soustraite
+    """
+    # la moyenne de chaque ligne
+    row_means = np.mean(data, axis=1, keepdims=True)
+    
+    processed_data = data - row_means
+    
+    return processed_data
 
 def generate_range_profile(data, window_type='hann'):
     """
@@ -118,7 +218,6 @@ def generate_range_doppler_map_with_axes(data, params, window_type='hann',
     velocity_axis : ndarray
         Axe de vitesse en m/s
     """
-    # Obtenir les dimensions des données
     Mc, Ms = data.shape
     
     # Nouvelles dimensions avec zero-padding
@@ -127,9 +226,9 @@ def generate_range_doppler_map_with_axes(data, params, window_type='hann',
     
     # pour réduire les composantes DC
     data = data - np.mean(data, axis=0, keepdims=True)
-    
-    # Appliquer la fenêtre aux données
-    windowed_data = apply_window(data, window_type)
+    data = remove_mean_per_row(data) # on retire la moyenne de chaque ligne
+
+    windowed_data = apply_window(data, window_type) # ici hann
     
     # 1. FFT sur l'axe de la distance (axe 1)
     range_fft = np.fft.fft(windowed_data, n=padded_Ms, axis=1)
@@ -140,100 +239,21 @@ def generate_range_doppler_map_with_axes(data, params, window_type='hann',
     # 3. Shift pour centrer les vitesses autour de zéro
     range_doppler_map = np.fft.fftshift(range_doppler_map, axes=0)
     
-    # Calculer les axes physiques correspondants
+    # calcul des axes physiques
     range_axis = calculate_range_axis(params, padded_Ms)
     velocity_axis = calculate_velocity_axis(params, padded_Mc)
     
-    # Calcul de la magnitude
+    # Calcul de l'amplitude
     range_doppler_magnitude = np.abs(range_doppler_map)
     
     # Appliquer un filtre médian si demandé pour réduire le bruit
     if apply_2d_filter:
         range_doppler_magnitude = ndimage.median_filter(range_doppler_magnitude, size=kernel_size)
     
-    # Conversion en dB avec protection contre les valeurs nulles
+    # Conversion en dB en retirant les valeurs nulles
     range_doppler_db = 20 * np.log10(np.maximum(range_doppler_magnitude, 1e-15))
     
     return range_doppler_db, range_axis, velocity_axis
-
-def calculate_range_axis(params, padded_samples=None):
-    """
-    Calcule l'axe de distance pour la carte Range-Doppler avec prise en compte du zero-padding
-    
-    Parameters:
-    -----------
-    params : dict
-        Dictionnaire contenant les paramètres du radar
-        
-    padded_samples : int, optional
-        Nombre d'échantillons après zero-padding
-        
-    Returns:
-    --------
-    range_axis : ndarray
-        Axe de distance en mètres
-    """
-    # Vérifier que les paramètres nécessaires sont présents
-    if 'samples_per_chirp' not in params or 'range_resolution' not in params:
-        raise KeyError("Paramètres manquants: 'samples_per_chirp' ou 'range_resolution'")
-    
-    Ms = int(params['samples_per_chirp'])  # Convertir en entier pour éviter les problèmes de type
-    range_resolution = params['range_resolution']
-    
-    # Si padded_samples n'est pas spécifié, utiliser Ms
-    if padded_samples is None:
-        padded_samples = Ms
-    
-    # Calcul de la nouvelle résolution avec zero-padding
-    actual_resolution = range_resolution * (Ms / padded_samples)
-
-    # Créer l'axe de distance
-    range_axis = np.arange(padded_samples) * actual_resolution
-    
-    return range_axis
-
-def calculate_velocity_axis(params, padded_chirps=None):
-    """
-    Calcule l'axe de vitesse pour la carte Range-Doppler avec prise en compte du zero-padding
-    
-    Parameters:
-    -----------
-    params : dict
-        Dictionnaire contenant les paramètres du radar
-        
-    padded_chirps : int, optional
-        Nombre de chirps après zero-padding
-        
-    Returns:
-    --------
-    velocity_axis : ndarray
-        Axe de vitesse en m/s
-    """
-    # Vérifier que les paramètres nécessaires sont présents
-    required_params = ['start_freq', 'num_chirps', 'chirp_time']
-    for param in required_params:
-        if param not in params:
-            raise KeyError(f"Paramètre manquant: '{param}'")
-    
-    f0 = params['start_freq']
-    Mc = int(params['num_chirps'])
-    Tc = params['chirp_time']
-    
-    # Si padded_chirps n'est pas spécifié, utiliser Mc
-    if padded_chirps is None:
-        padded_chirps = Mc
-    
-    # Calcul de la vitesse maximale sans ambiguïté
-    wavelength = 3e8 / f0  # Longueur d'onde (c/f)
-    velocity_max = wavelength / (4 * Tc)  # Vitesse maximale sans ambiguïté
-    
-    # Calcul de la résolution de vitesse avec zero-padding
-    velocity_resolution = (2 * velocity_max) / padded_chirps
-    
-    # Axe de vitesse centré sur zéro
-    velocity_axis = np.arange(-padded_chirps//2, padded_chirps//2) * velocity_resolution
-    
-    return velocity_axis
 
 def generate_range_doppler_map(data, window_type='hann', range_padding_factor=2, doppler_padding_factor=2):
     """
