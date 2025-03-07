@@ -48,7 +48,9 @@ Les radars FMCW sont extrêmement utiles dans de nombreuses applications pour pl
 
 Les radars FMCW mesurent la vitesse des objets grâce à l'effet Doppler et à des techniques de traitement du signal avancées:
 
-1. **Effet Doppler** - Le mouvement relatif entre le radar et la cible provoque un décalage de fréquence du signal réfléchi. Par exemple, si une cible se dirige vers le radar, il rencontrera le signal en 'avance' et renverra le signal mais avec une fréquence plus élevée. https://github.com/mat-bau/projet-radar-fmcw/blob/main/docs/animations/doppler_effect_comparison.gif. Maintenant il faudrait trouver un moyen de calculer cette nouvelle fréquence, et on pourrait simplement avec l'équation de Doppler retrouver la vitesse de l'objet. 
+1. **Effet Doppler** - Le mouvement relatif entre le radar et la cible provoque un décalage de fréquence du signal réfléchi. Par exemple, si une cible se dirige vers le radar, il rencontrera le signal en 'avance' et renverra le signal mais avec une fréquence plus élevée. 
+
+Maintenant il faudrait trouver un moyen de calculer cette nouvelle fréquence, et on pourrait simplement avec l'équation de Doppler retrouver la vitesse de l'objet. 
 
 $$ f_D = \frac{2 v f_0}{c} \Leftrightarrow v = \frac{c f_D}{2 f_0} $$
 
@@ -56,7 +58,7 @@ Pour trouver cette nouvelle fréquence qui peut être très proche de la fréque
 
 $$ mix = sin(f_0t)\times sin(f_Dt) $$
 
-C'est la qu'il faut se rappeler des formules de Simpson et on remarque qu'en multipliant nos 2 signaux on a en fait un nouveau signal composé de 2 nouveaux sinus
+C'est là qu'il faut se rappeler des formules de Simpson et on remarque qu'en multipliant nos 2 signaux on a en fait un nouveau signal composé de 2 nouveaux sinus
 
 $$ mix = \frac{1}{2}\times[cos((f_0-f_D)t)-cos((f_0+f_D)t)] $$ 
 
