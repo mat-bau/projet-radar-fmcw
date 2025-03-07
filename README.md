@@ -70,7 +70,7 @@ Pour installer et configurer ce projet, suivez les étapes ci-dessous :
 ```bash
 # Cloner le dépôt
 git clone https://github.com/mat-bau/projet-radar-fmcw.git
-cd radar-fmcw
+cd projet-radar-fmcw
 ```
 2. Créez un environnement virtuel (recommandé)
 
@@ -97,12 +97,11 @@ Cette commande va :
 Pour vérifier que tout fonctionne correctement, runnez un exemple :
 
 ```bash
-make run-ms1
+make run-MS1-FMCW
 ```
 
 ## Utilisation
-
-Consultez la documentation d'aide du Makefile pour les différentes commandes disponibles :
+Pour la suite des commandes vous pouvez consulter la documentation d'aide du Makefile pour les différentes commandes disponibles :
 ```bash
 make help
 ```
