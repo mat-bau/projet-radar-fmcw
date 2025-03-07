@@ -11,8 +11,8 @@ matplotlib.use('Agg')  # Pour le rendu sans interface graphique
 # Ajouter le répertoire parent au chemin d'accès
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Import des fonctions des packages dans src
-from src.data_handling.data_loader import load_fmcw_data, extract_frame, reshape_to_chirps
+# Imports
+from src.data_handling.data_loader import load_fmcw_data, extract_frame, reshape_to_chirps, subtract_background
 from src.signal_processing.range_doppler_map import (
     generate_range_profile,
     generate_range_doppler_map_with_axes,
@@ -23,28 +23,6 @@ from src.signal_processing.range_doppler_map import (
 )
 from src.visualization.plotting import plot_range_doppler, visualize_3d_range_doppler, create_combined_visualization
 
-def subtract_background(data, background_data):
-    """
-    Soustrait les données de fond des données radar
-    
-    Parameters:
-    -----------
-    data : ndarray
-        Données radar originales
-    background_data : ndarray
-        Données de fond à soustraire
-        
-    Returns:
-    --------
-    subtracted_data : ndarray
-        Données radar avec le fond soustrait
-    """
-    # S'assurer que les données ont la même forme
-    if data.shape != background_data.shape:
-        raise ValueError(f"Les dimensions des données ({data.shape}) et du fond ({background_data.shape}) ne correspondent pas")
-    
-    # Les données sont complexes, donc on fait une soustraction complexe
-    return data - background_data
 
 def main():
     """Fonction principale pour l'animation des données FMCW avec différents types de visualisation"""
@@ -61,9 +39,9 @@ def main():
                        help='Activer la détection de cibles avec CFAR')
     parser.add_argument('--dynamic-range', type=int, default=20,
                        help='Plage dynamique en dB pour la visualisation')
-    parser.add_argument('--range-padding', type=int, default=4,
+    parser.add_argument('--range-padding', type=int, default=6,
                        help='Facteur de zero-padding pour l\'axe distance')
-    parser.add_argument('--doppler-padding', type=int, default=4,
+    parser.add_argument('--doppler-padding', type=int, default=6,
                        help='Facteur de zero-padding pour l\'axe Doppler')
     parser.add_argument('--window-type', type=str, default='hann',
                        help='Type de fenêtre à appliquer (hann, hamming, blackman, etc.)')
@@ -181,10 +159,7 @@ def main():
     # Transformer les données en 2D (chirps x échantillons)
     radar_data = reshape_to_chirps(complex_data, params, "without_pause")
     
-    # Générer le profil de distance
     range_profile = generate_range_profile(radar_data, window_type=args.window_type)
-    
-    # Générer la Range-Doppler map avec les axes
     range_doppler_map, range_axis, velocity_axis = generate_range_doppler_map_with_axes(
         radar_data, 
         params,
@@ -290,9 +265,10 @@ def main():
                 
                 # Détection de cibles si activée
                 if args.detect_targets:
-                    if scatter is not None:
-                        scatter.remove()
-                    
+                    # Vérifier si scatter existe et est dans les enfants de l'axe avant d'essayer de le supprimer
+                    if scatter is not None and scatter in ax_rdm.collections:
+                        scatter.remove()    
+                        
                     try:
                         detections = apply_cfar_detector(
                             range_doppler_map, 
@@ -407,7 +383,8 @@ def main():
                 
                 # Détection de cibles si activée
                 if args.detect_targets:
-                    if scatter is not None:
+                    # Vérifier si scatter existe et est dans les enfants de l'axe avant d'essayer de le supprimer
+                    if scatter is not None and scatter in ax_rdm.collections:
                         scatter.remove()
                         
                     try:
