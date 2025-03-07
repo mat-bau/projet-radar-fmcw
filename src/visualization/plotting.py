@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 import os
+import scipy.signal as signal
 
 def plot_range_profile(range_profile, range_axis, title="Profil de distance", save_path=None):
     """
