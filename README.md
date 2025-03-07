@@ -12,12 +12,20 @@ En effet, un signal qui se propage dans l'air, diminue d'un facteur inversément
 
 $$P_{avg} = P_{peak} \times \frac{t_{on}}{t_{on}+t_{off}} = P_{peak} \times DC$$
 
-Ce qui nous force à augmenter bien plus fort notre **$P_{peak}$** pour obtenir la même puissance qu'un système qui émet continuellement qui a donc un *DC = 100%*.
+Ce qui nous force à augmenter bien plus fort notre **$P_{peak}$** pour obtenir la même puissance qu'un système qui émet continuellement qui a donc un *DC = 100%*. Ce qui demande généralement des instruments, plus spacieux et plus chers.
 
 ### Mesure simultanée de la distance et de la vitesse
 
 Mais le fait d'émettre un signal continu n'est pas suffisant pour faire du radar un bon radar. En fait, en émettant qu'à une seule et unique fréquence, notre radar ne serait même pas capable de savoir quel écho correspond au premier ou au deuxième signal émis. C'est là qu'intervient la modulation en fréquence (Frequency-modulated). Ce radar FMCW envoie un signal tel 
 * Meilleure résolution à courte portée
+
+Une autre raison qui fait du radar FMCW préférable aux radars à impulsions classiques. Là où les radars à impulsions ont une distance minimum de détection dûe au fait que le radar ne détecte rien lors de l'émission (sinon il détecterait l'émission directe), le minimum est donc lié à la durée de l'impulsion $\tau$:
+
+$$R_{min} = \frac{c \times \tau}{2}$$
+Et plus $\tau$ est grand plus la distance minimale détectable est élevée :
+$$R_{\text{min}} = \frac{3 \times 10^8 \times 10^{-6}}{2} = 150 \text{ m}$$
+Les radars FMCW ne doivent pas attendre la fin d'une impulsion car ils se basent sur les fréquences battement $f_{beat}$ ce qui en fait un outil très pratique pour les radars embarqués en voiture.
+
 * Moins sensible aux interférences
 
 Le principe de base repose sur le mélange du signal émis avec le signal reçu après réflexion sur une cible. La différence de fréquence entre ces deux signaux (fréquence de battement) est proportionnelle au temps de trajet aller-retour, donc à la distance de la cible.
