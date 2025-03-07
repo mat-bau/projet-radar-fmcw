@@ -22,8 +22,11 @@ Mais le fait d'émettre un signal continu n'est pas suffisant pour faire du rada
 Une autre raison qui fait du radar FMCW préférable aux radars à impulsions classiques. Là où les radars à impulsions ont une distance minimum de détection dûe au fait que le radar ne détecte rien lors de l'émission (sinon il détecterait l'émission directe), le minimum est donc lié à la durée de l'impulsion $\tau$:
 
 $$R_{min} = \frac{c \times \tau}{2}$$
+
 Et plus $\tau$ est grand plus la distance minimale détectable est élevée :
+
 $$R_{\text{min}} = \frac{3 \times 10^8 \times 10^{-6}}{2} = 150 \text{ m}$$
+
 Les radars FMCW ne doivent pas attendre la fin d'une impulsion car ils se basent sur les fréquences battement $f_{beat}$ ce qui en fait un outil très pratique pour les radars embarqués en voiture.
 
 * Moins sensible aux interférences
