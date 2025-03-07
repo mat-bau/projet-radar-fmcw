@@ -59,7 +59,7 @@ runanim3d-%:
 # Animation combinée
 runanimcombined-%:
 	@echo "Création d'une animation combinée pour le fichier data/$*.npz"
-	RADAR_DATA_FILE=data/$*.npz python3 $(EXAMPLES_DIR)/$(ANIM_SCRIPT) --output-dir=output/$* --fps=10 --dynamic-range=20 --detect-targets --view-type=combined --background-file $(DATA_DIR)/background1.npz
+	RADAR_DATA_FILE=data/$*.npz python3 $(EXAMPLES_DIR)/$(ANIM_SCRIPT) --output-dir=output/$* --fps=10 --remove-static --dynamic-range=20 --detect-targets --view-type=combined --background-file $(DATA_DIR)/background1.npz
 
 # Nettoyage
 clean:
