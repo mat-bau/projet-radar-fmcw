@@ -43,7 +43,7 @@ def load_fmcw_data(filepath):
         
         # autres paramètres calculés
         params['range_resolution'] = 3e8 / (2 * B)  # Résolution en distance (m)
-        params['max_range'] = 3e8 * Ms * Ts / 2     # Portée maximale (m)
+        params['max_range'] = (3e8 * Ms) / (2 * B) # Distance max (m)
         params['velocity_resolution'] = 3e8 / (2 * f0 * Mc * Tc)  # Résolution en vitesse (m/s)
         params['max_velocity'] = 3e8 / (4 * f0 * Tc)  # Vitesse max (m/s)
         
@@ -107,7 +107,7 @@ def reshape_to_chirps(complex_data, params, methode="without_pause"):
     
     expected_size = int(Mc * Ms)
     actual_size = len(complex_data)
-    Mpause = actual_size//Mc - Ms 
+    Mpause = actual_size//Mc - Ms  # M = Mc*(Ms+Mpause)
 
     if actual_size != expected_size:
         radar_data = np.reshape(complex_data, (Mc, Ms+Mpause)) # ligne de taille Mc (chaque colonne est un chirp, un info sur Doppler) et colonne de taille Ms+Mpause (info sur distance)
