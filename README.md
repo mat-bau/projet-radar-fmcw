@@ -50,6 +50,8 @@ Les radars FMCW mesurent la vitesse des objets grâce à l'effet Doppler et à d
 
 1. **Effet Doppler** - Le mouvement relatif entre le radar et la cible provoque un décalage de fréquence du signal réfléchi. Par exemple, si une cible se dirige vers le radar, il rencontrera le signal en 'avance' et renverra le signal mais avec une fréquence plus élevée. 
 
+![Image](https://github.com/user-attachments/assets/d012fec1-43dd-4665-b695-8eff8082e6c7)
+
 Maintenant il faudrait trouver un moyen de calculer cette nouvelle fréquence, et on pourrait simplement avec l'équation de Doppler retrouver la vitesse de l'objet. 
 
 $$ f_D = \frac{2 v f_0}{c} \Leftrightarrow v = \frac{c f_D}{2 f_0} $$
