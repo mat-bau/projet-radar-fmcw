@@ -135,7 +135,7 @@ def subtract_background(data, background_data):
     subtracted_data : ndarray
         Données radar avec le fond soustrait
     """
-    # je dois encore y regarder ca ne fait pas ce que je veux 
+    # Update du labo2 : il faut faire la moyenne des données de fond
 
     # S'assurer que les données ont la même forme
     if data.shape != background_data.shape:

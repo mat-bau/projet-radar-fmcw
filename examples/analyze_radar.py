@@ -43,10 +43,10 @@ def main():
     parser.add_argument('--detect-targets', action='store_true',
                        help='Activer la détection de cibles avec CFAR')
     parser.add_argument('--dynamic-range', type=int, default=20, # a changer pour voir plus en profondeur!!!
-                       help='Plage dynamique en dB pour la visualisation')
-    parser.add_argument('--range-padding', type=int, default=20,
+                       help='Plage dynamique en dB pour la visualisation') # change pour meilleure qualité
+    parser.add_argument('--range-padding', type=int, default=1,
                        help='Facteur de zero-padding pour l\'axe distance')
-    parser.add_argument('--doppler-padding', type=int, default=20,
+    parser.add_argument('--doppler-padding', type=int, default=1,
                        help='Facteur de zero-padding pour l\'axe Doppler')
     parser.add_argument('--window-type', type=str, default='hann',
                        help='Type de fenêtre à appliquer (hann, hamming, blackman, etc.)')

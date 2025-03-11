@@ -121,6 +121,8 @@ def main():
     print(f"Nombre de frames: {data.shape[0]}")
     print(f"Nombre de canaux: {data.shape[1]}")
     print(f"Nombre total d'échantillons par frame: {data.shape[2]}")
+    print(f"Zero-padding en distance: {args.range_padding}")
+    print(f"Zero-padding en vitesse: {args.doppler_padding}")
     print("\nParamètres du radar:")
     print(f"Fréquence porteuse: {params['start_freq']/1e9:.2f} GHz")
     print(f"Bande passante: {params['bandwidth']/1e6:.2f} MHz")
