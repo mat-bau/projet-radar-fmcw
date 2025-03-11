@@ -24,7 +24,7 @@ Une autre raison qui fait du radar FMCW préférable aux radars à impulsions cl
 
 $$R_{min} = \frac{c \times \tau}{2}$$
 
-Et plus $\tau$ est grand plus la distance minimale détectable est élevée, avec une impulsion $\tau = 1 \text{\mathrm{\mu} s}$ on a:
+Et plus $\tau$ est grand plus la distance minimale détectable est élevée, avec une impulsion $\tau = 1 μs}$ on a:
 
 $$R_{\text{min}} = \frac{3 \times 10^8 \times 10^{-6}}{2} = 150 \text{ m}$$
 
