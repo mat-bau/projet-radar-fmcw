@@ -7,9 +7,15 @@ DATA_DIR = data
 OUTPUT_DIR = output
 EXAMPLES_DIR = examples
 
+LABO1_DIR = $(DATA_DIR)/Labo1
+LABO2_DIR = $(DATA_DIR)/Labo2
+
 # Exécutable principal
 MAIN_SCRIPT = analyze_radar.py
 ANIM_SCRIPT = animate_radar.py
+
+# c'est une fonction pour trouver le fichier par son numéro dans data
+find_file_by_number = $(shell ls -1 $(1)/$(2).* 2>/dev/null | head -1 || echo "")
 
 # Cibles principales, mettre les toutes regles sinon ca bug
 .PHONY: all setup run-% runanim-% runanim3d-% runanimcombined-% clean help
@@ -30,36 +36,94 @@ requirements.txt:
 	@echo "pytest>=7.0.0" >> requirements.txt
 
 # Exécution du script d'analyse simple
-run-%:
-	@if [ ! -f "$(DATA_DIR)/$*.npz" ]; then \
-		echo "Erreur: Le fichier $(DATA_DIR)/$*.npz n'existe pas"; \
+run-labo1-%:
+	@echo "Recherche du fichier correspondant au numéro $* dans $(LABO1_DIR)"
+	$(eval FILE := $(call find_file_by_number,$(LABO1_DIR),$*))
+	@if [ -z "$(FILE)" ]; then \
+		echo "Erreur: Aucun fichier commençant par $*. n'a été trouvé dans $(LABO1_DIR)"; \
 		exit 1; \
 	fi
-	RADAR_DATA_FILE=$(DATA_DIR)/$*.npz $(PYTHON) $(EXAMPLES_DIR)/$(MAIN_SCRIPT)
+	@echo "Analyse du fichier $(FILE)"
+	RADAR_DATA_FILE=$(FILE) $(PYTHON) $(EXAMPLES_DIR)/$(MAIN_SCRIPT) --output-dir=$(OUTPUT_DIR)/labo1/$*
+
+run-labo2-%:
+	@echo "Recherche du fichier correspondant au numéro $* dans $(LABO2_DIR)"
+	$(eval FILE := $(call find_file_by_number,$(LABO2_DIR),$*))
+	@if [ -z "$(FILE)" ]; then \
+		echo "Erreur: Aucun fichier commençant par $*. n'a été trouvé dans $(LABO2_DIR)"; \
+		exit 1; \
+	fi
+	@echo "Analyse du fichier $(FILE)"
+	RADAR_DATA_FILE=$(FILE) $(PYTHON) $(EXAMPLES_DIR)/$(MAIN_SCRIPT) --output-dir=$(OUTPUT_DIR)/labo2/$*
+
 # Animation 2D
-runanim-%:
-	@echo "Création d'une animation 2D pour le fichier $(DATA_DIR)/$*.npz"
-	@if [ ! -f "$(DATA_DIR)/$*.npz" ]; then \
-		echo "Erreur: Le fichier $(DATA_DIR)/$*.npz n'existe pas"; \
+runanim-labo1-%:
+	@echo "Recherche du fichier correspondant au numéro $* dans $(LABO1_DIR)"
+	$(eval FILE := $(call find_file_by_number,$(LABO1_DIR),$*))
+	@if [ -z "$(FILE)" ]; then \
+		echo "Erreur: Aucun fichier commençant par $*. n'a été trouvé dans $(LABO1_DIR)"; \
 		exit 1; \
 	fi
-	@mkdir -p output/$*
-	RADAR_DATA_FILE=$(DATA_DIR)/$*.npz $(PYTHON) $(EXAMPLES_DIR)/$(ANIM_SCRIPT) --output-dir=output/$* --view-type=2d --background-file $(DATA_DIR)/background1.npz
+	@echo "Animation du fichier $(FILE)"
+	@mkdir -p $(OUTPUT_DIR)/labo1/$*
+	RADAR_DATA_FILE=$(FILE) $(PYTHON) $(EXAMPLES_DIR)/$(ANIM_SCRIPT) --output-dir=$(OUTPUT_DIR)/labo1/$* --view-type=2d
+
+runanim-labo2-%:
+	@echo "Recherche du fichier correspondant au numéro $* dans $(LABO2_DIR)"
+	$(eval FILE := $(call find_file_by_number,$(LABO2_DIR),$*))
+	@if [ -z "$(FILE)" ]; then \
+		echo "Erreur: Aucun fichier commençant par $*. n'a été trouvé dans $(LABO2_DIR)"; \
+		exit 1; \
+	fi
+	@echo "Animation du fichier $(FILE)"
+	@mkdir -p $(OUTPUT_DIR)/labo2/$*
+	RADAR_DATA_FILE=$(FILE) $(PYTHON) $(EXAMPLES_DIR)/$(ANIM_SCRIPT) --output-dir=$(OUTPUT_DIR)/labo2/$* --view-type=2d
 
 # Animation 3D
-runanim3d-%:
-	@echo "Création d'une animation 3D pour le fichier $(DATA_DIR)/$*.npz"
-	@if [ ! -f "$(DATA_DIR)/$*.npz" ]; then \
-		echo "Erreur: Le fichier $(DATA_DIR)/$*.npz n'existe pas"; \
+runanim3d-labo1-%:
+	@echo "Recherche du fichier correspondant au numéro $* dans $(LABO1_DIR)"
+	$(eval FILE := $(call find_file_by_number,$(LABO1_DIR),$*))
+	@if [ -z "$(FILE)" ]; then \
+		echo "Erreur: Aucun fichier commençant par $*. n'a été trouvé dans $(LABO1_DIR)"; \
 		exit 1; \
 	fi
-	@mkdir -p output/$*
-	RADAR_DATA_FILE=$(DATA_DIR)/$*.npz $(PYTHON) $(EXAMPLES_DIR)/$(ANIM_SCRIPT) --output-dir=output/$* --view-type=3d
+	@echo "Création d'une animation 3D pour le fichier $(FILE)"
+	@mkdir -p $(OUTPUT_DIR)/labo1/$*
+	RADAR_DATA_FILE=$(FILE) $(PYTHON) $(EXAMPLES_DIR)/$(ANIM_SCRIPT) --output-dir=$(OUTPUT_DIR)/labo1/$* --view-type=3d
+
+runanim3d-labo2-%:
+	@echo "Recherche du fichier correspondant au numéro $* dans $(LABO2_DIR)"
+	$(eval FILE := $(call find_file_by_number,$(LABO2_DIR),$*))
+	@if [ -z "$(FILE)" ]; then \
+		echo "Erreur: Aucun fichier commençant par $*. n'a été trouvé dans $(LABO2_DIR)"; \
+		exit 1; \
+	fi
+	@echo "Création d'une animation 3D pour le fichier $(FILE)"
+	@mkdir -p $(OUTPUT_DIR)/labo2/$*
+	RADAR_DATA_FILE=$(FILE) $(PYTHON) $(EXAMPLES_DIR)/$(ANIM_SCRIPT) --output-dir=$(OUTPUT_DIR)/labo2/$* --view-type=3d
 
 # Animation combinée
-runanimcombined-%:
-	@echo "Création d'une animation combinée pour le fichier data/$*.npz"
-	RADAR_DATA_FILE=data/$*.npz python3 $(EXAMPLES_DIR)/$(ANIM_SCRIPT) --output-dir=output/$* --fps=10 --remove-static --dynamic-range=20 --detect-targets --view-type=combined --background-file $(DATA_DIR)/background1.npz
+runanimcombined-labo1-%:
+	@echo "Recherche du fichier correspondant au numéro $* dans $(LABO1_DIR)"
+	$(eval FILE := $(call find_file_by_number,$(LABO1_DIR),$*))
+	@if [ -z "$(FILE)" ]; then \
+		echo "Erreur: Aucun fichier commençant par $*. n'a été trouvé dans $(LABO1_DIR)"; \
+		exit 1; \
+	fi
+	@echo "Création d'une animation combinée pour le fichier $(FILE)"
+	@mkdir -p $(OUTPUT_DIR)/labo1/$*
+	RADAR_DATA_FILE=$(FILE) $(PYTHON) $(EXAMPLES_DIR)/$(ANIM_SCRIPT) --output-dir=$(OUTPUT_DIR)/labo1/$* --fps=10 --remove-static --dynamic-range=20 --view-type=combined
+
+runanimcombined-labo2-%:
+	@echo "Recherche du fichier correspondant au numéro $* dans $(LABO2_DIR)"
+	$(eval FILE := $(call find_file_by_number,$(LABO2_DIR),$*))
+	@if [ -z "$(FILE)" ]; then \
+		echo "Erreur: Aucun fichier commençant par $*. n'a été trouvé dans $(LABO2_DIR)"; \
+		exit 1; \
+	fi
+	@echo "Création d'une animation combinée pour le fichier $(FILE)"
+	@mkdir -p $(OUTPUT_DIR)/labo2/$*
+	RADAR_DATA_FILE="$(FILE)" $(PYTHON) $(EXAMPLES_DIR)/$(ANIM_SCRIPT) --output-dir=$(OUTPUT_DIR)/labo2/$* --fps=10 --remove-static --dynamic-range=20 --view-type=combined
 
 # Nettoyage
 clean:
@@ -75,17 +139,22 @@ clean:
 .PHONY: help
 help:
 	@echo "Commandes disponibles :"
-	@echo "  make               - Installer les dépendances et exécuter l'analyse MS1-FMCW"
-	@echo "  make setup         - Installer les dépendances"
-	@echo "  make clean         - Nettoyer les fichiers temporaires"
-	@echo "  make help          - Afficher cette aide"
-	@echo "  make run-FICHIER      - Exécute l'analyse sur FICHIER.npz (dans le répertoire $(DATA_DIR))"
-	@echo "  make runanim...-FICHIER - Crée une animation pour FICHIER.npz"
-	@echo "  make help             - Affiche cette aide"
-	@echo "  make clean            - Nettoie les fichiers générés"
+	@echo "  make                            - Installer les dépendances et exécuter l'analyse"
+	@echo "  make setup                      - Installer les dépendances"
+	@echo "  make clean                      - Nettoyer les fichiers temporaires"
+	@echo "  make help                       - Afficher cette aide"
+	@echo ""
+	@echo "Commandes pour les laboratoires :"
+	@echo "  make run-labo1-NUM              - Analyse le fichier NUM.* dans data/Labo1"
+	@echo "  make run-labo2-NUM              - Analyse le fichier NUM.* dans data/Labo2"
+	@echo "  make runanim-labo1-NUM          - Crée une animation 2D du fichier NUM.* dans data/Labo1"
+	@echo "  make runanim-labo2-NUM          - Crée une animation 2D du fichier NUM.* dans data/Labo2"
+	@echo "  make runanim3d-labo1-NUM        - Crée une animation 3D du fichier NUM.* dans data/Labo1"
+	@echo "  make runanim3d-labo2-NUM        - Crée une animation 3D du fichier NUM.* dans data/Labo2"
+	@echo "  make runanimcombined-labo1-NUM  - Crée une animation combinée du fichier NUM.* dans data/Labo1"
+	@echo "  make runanimcombined-labo2-NUM  - Crée une animation combinée du fichier NUM.* dans data/Labo2"
 	@echo ""
 	@echo "Exemples:"
-	@echo "  make run-MS1-FMCW     - Analyse le fichier data/MS1-FMCW.npz"
-	@echo "  make runanim-MS1-FMCW    - Crée une animation 2D du fichier data/MS1-FMCW.npz"
-	@echo "  make runanim-3d-MS1-FMCW - Crée une animation 3D du fichier data/MS1-FMCW.npz"
-	@echo "  make runanimcombined-MS1-FMCW - Crée une animation combinez avec les profils range et vitesse et la rdm du fichier data/MS1-FMCW.npz"
+	@echo "  make run-labo1-1                - Analyse le fichier qui commence par 1. dans data/Labo1"
+	@echo "  make runanim-labo2-4            - Crée une animation 2D du fichier qui commence par 4. dans data/Labo2 et sauvegarde les images dans output/labo2/4"
+	@echo "  make runanimcombined-labo1-2    - Crée une animation combinée du fichier qui commence par 2. dans data/Labo1"
