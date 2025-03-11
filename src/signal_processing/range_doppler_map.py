@@ -240,6 +240,7 @@ def generate_range_doppler_map_with_axes(data, params, window_type='hann',
     
     # 1. FFT sur l'axe de la distance (axe 1)
     range_fft = np.fft.fft(windowed_data, n=padded_Ms, axis=1)
+    range_fft = np.flip(range_fft, axis=1)  # Inverser l'axe de distance
     
     # 2. FFT sur l'axe Doppler (axe 0)
     range_doppler_map = np.fft.fft(range_fft, n=padded_Mc, axis=0)
