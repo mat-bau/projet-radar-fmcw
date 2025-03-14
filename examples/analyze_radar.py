@@ -16,19 +16,29 @@ from src.signal_processing.range_doppler_map import (
     apply_cfar_detector,
     remove_static_components,
     apply_clutter_threshold,
-    estimate_target_parameters
+    estimate_target_parameters,
+    estimate_imbalance_coefficients_from_channels,
+    correct_iq_imbalance
 )
 from src.visualization.plotting import (
     plot_range_profile, 
     plot_range_doppler,
     visualize_3d_range_doppler,
-    plot_spectrogram
+    plot_spectrogram,
+    plot_dual_range_doppler
+)
+
+from src.signal_processing.iq_calibration import (
+    estimate_imbalance_parameters,
+    correct_imbalance,
+    calculate_imbalance_metrics,
+    visualize_iq_correction
 )
 
 def main():
     """Fonction principale pour l'analyse des données FMCW"""
     
-    # Configuration des paramètres
+    # DEBUT DU PARSE DES ARGUMENTS
     parser = argparse.ArgumentParser(description='Analyse des données FMCW')
     parser.add_argument('--data-file', type=str, required=False,
                        help='Chemin vers le fichier de données')
@@ -44,9 +54,9 @@ def main():
                        help='Activer la détection de cibles avec CFAR')
     parser.add_argument('--dynamic-range', type=int, default=20, # a changer pour voir plus en profondeur!!!
                        help='Plage dynamique en dB pour la visualisation') # change pour meilleure qualité
-    parser.add_argument('--range-padding', type=int, default=1,
+    parser.add_argument('--range-padding', type=int, default=10,
                        help='Facteur de zero-padding pour l\'axe distance')
-    parser.add_argument('--doppler-padding', type=int, default=1,
+    parser.add_argument('--doppler-padding', type=int, default=10,
                        help='Facteur de zero-padding pour l\'axe Doppler')
     parser.add_argument('--window-type', type=str, default='hann',
                        help='Type de fenêtre à appliquer (hann, hamming, blackman, etc.)')
@@ -66,6 +76,15 @@ def main():
                        help='Taille du noyau pour le filtre médian 2D')
     parser.add_argument('--estimate-targets', action='store_true',
                        help='Estimer les paramètres précis des cibles par interpolation')
+    parser.add_argument('--estimate-iq-imbalance', action='store_true',
+                   help='Estimer les coefficients de déséquilibre IQ')
+    parser.add_argument('--correct-iq', action='store_true',
+                    help='Appliquer la correction du déséquilibre IQ')
+    parser.add_argument('--analyze-iq-imbalance', action='store_true',
+                    help='Analyser et corriger le déséquilibre IQ')
+    parser.add_argument('--compare-channels', action='store_true',
+                   help='Comparer les cartes Range-Doppler des canaux déséquilibrés (0,1) et équilibrés (2,3)')
+    # FIN DU PARSE DES ARGUMENTS
     args = parser.parse_args()
     
     # Si aucun fichier n'est spécifié dans les arguments, utiliser la variable d'environnement
@@ -147,13 +166,27 @@ def main():
         
         # Extraire les données d'une frame (I1 et Q1)
         complex_data = extract_frame(data, frame_index=args.frame, channel_indices=(0, 1))
+        ref_data = extract_frame(data, frame_index=args.frame, channel_indices=(2, 3))
         
         # Soustraire le fond si spécifié
         if background_data is not None:
             bg_complex_data = extract_frame(background_data, frame_index=args.frame, channel_indices=(0, 1))
             complex_data = subtract_background(complex_data, bg_complex_data)
-        
+
+
+        """""
+        # pour estimer les coefficients de déséquilibre IQ si demandée
+        if args.estimate_iq_imbalance:
+            print("Estimation des coefficients de déséquilibre IQ...")
+            alpha, beta = estimate_imbalance_parameters(complex_data, ref_data)
+            
+            # Appliquer la correction si demandée
+            if args.correct_iq:
+                print("Application de la correction du déséquilibre IQ...")
+                complex_data = correct_imbalance(complex_data, alpha=alpha, beta=beta)
+        """""
         radar_data = reshape_to_chirps(complex_data, params, "without_pause")
+
         
         print(f"Forme des données après reshape: {radar_data.shape}")
         print("\nGénération des visualisations...")
@@ -316,6 +349,144 @@ def main():
                 save_path=f"{args.output_dir}/spectrogram_frame{args.frame}_{filename_base}.pdf"
                 )
         
+        # 5. Comparaison des RDM déséquilibrée et corrigée
+        if args.analyze_iq_imbalance or args.correct_iq:
+            print("\nGénération de la comparaison entre RDM déséquilibrée, corrigée et référence...")
+            
+            # Extraire les données déséquilibrées
+            unbalanced_data = extract_frame(data, frame_index=args.frame, channel_indices=(0, 1))
+            
+            # Récupérer les données de référence si disponibles
+            reference_data = None
+            if data.shape[1] >= 4:
+                reference_data = extract_frame(data, frame_index=args.frame, channel_indices=(2, 3))
+                alpha, beta = estimate_imbalance_parameters(unbalanced_data, reference_data)
+            else:
+                # Sinon, utiliser la méthode statistique
+                alpha, beta = estimate_imbalance_parameters(unbalanced_data)
+            
+            # Corriger le déséquilibre
+            corrected_data = correct_imbalance(unbalanced_data, alpha, beta)
+            
+            # Transformer les données en format chirps x échantillons
+            unbalanced_radar_data = reshape_to_chirps(unbalanced_data, params, "without_pause")
+            corrected_radar_data = reshape_to_chirps(corrected_data, params, "without_pause")
+            
+            # Préparer les données de référence si disponibles
+            reference_radar_data = None
+            if reference_data is not None:
+                reference_radar_data = reshape_to_chirps(reference_data, params, "without_pause")
+            
+            # Générer les cartes Range-Doppler
+            unbalanced_rdm, range_axis, velocity_axis = generate_range_doppler_map_with_axes(
+                unbalanced_radar_data, 
+                params,
+                window_type=args.window_type,
+                range_padding_factor=args.range_padding,
+                doppler_padding_factor=args.doppler_padding,
+                apply_2d_filter=args.apply_2d_filter,
+                kernel_size=args.filter_size
+            )
+            
+            corrected_rdm, _, _ = generate_range_doppler_map_with_axes(
+                corrected_radar_data,
+                params,
+                window_type=args.window_type,
+                range_padding_factor=args.range_padding,
+                doppler_padding_factor=args.doppler_padding,
+                apply_2d_filter=args.apply_2d_filter,
+                kernel_size=args.filter_size
+            )
+            
+            # Générer la RDM de référence si disponible
+            reference_rdm = None
+            if reference_radar_data is not None:
+                reference_rdm, _, _ = generate_range_doppler_map_with_axes(
+                    reference_radar_data,
+                    params,
+                    window_type=args.window_type,
+                    range_padding_factor=args.range_padding,
+                    doppler_padding_factor=args.doppler_padding,
+                    apply_2d_filter=args.apply_2d_filter,
+                    kernel_size=args.filter_size
+                )
+            
+            # Appliquer les traitements supplémentaires si demandés
+            if args.remove_static:
+                unbalanced_rdm = remove_static_components(unbalanced_rdm, linear_scale=False)
+                corrected_rdm = remove_static_components(corrected_rdm, linear_scale=False)
+                if reference_rdm is not None:
+                    reference_rdm = remove_static_components(reference_rdm, linear_scale=False)
+            
+            if args.clutter_threshold > 0:
+                unbalanced_rdm = apply_clutter_threshold(unbalanced_rdm, args.clutter_threshold)
+                corrected_rdm = apply_clutter_threshold(corrected_rdm, args.clutter_threshold)
+                if reference_rdm is not None:
+                    reference_rdm = apply_clutter_threshold(reference_rdm, args.clutter_threshold)
+            
+            # Créer la figure avec trois sous-plots (ou deux si pas de référence)
+            num_plots = 3 if reference_rdm is not None else 2
+            fig, axes = plt.subplots(1, num_plots, figsize=(6*num_plots, 8))
+            
+            # Limiter la plage dynamique
+            dynamic_range = args.dynamic_range
+            vmax_unbalanced = np.max(unbalanced_rdm)
+            vmin_unbalanced = vmax_unbalanced - dynamic_range
+            
+            vmax_corrected = np.max(corrected_rdm)
+            vmin_corrected = vmax_corrected - dynamic_range
+            
+            # Plot de la RDM déséquilibrée
+            im1 = axes[0].pcolormesh(range_axis, velocity_axis, unbalanced_rdm[:len(velocity_axis), :len(range_axis)],
+                                cmap='jet', vmin=vmin_unbalanced, vmax=vmax_unbalanced, shading='auto')
+            axes[0].set_title('Range-Doppler Déséquilibré (I1,Q1)')
+            axes[0].set_xlabel('Distance (m)')
+            axes[0].set_ylabel('Vitesse (m/s)')
+            plt.colorbar(im1, ax=axes[0], label='Magnitude (dB)')
+            axes[0].grid(True, linestyle='--', alpha=0.5)
+            axes[0].axhline(y=0, color='r', linestyle='-', alpha=0.3)
+            
+            # Plot de la RDM corrigée
+            im2 = axes[1].pcolormesh(range_axis, velocity_axis, corrected_rdm[:len(velocity_axis), :len(range_axis)],
+                                cmap='jet', vmin=vmin_corrected, vmax=vmax_corrected, shading='auto')
+            axes[1].set_title('Range-Doppler Corrigé')
+            axes[1].set_xlabel('Distance (m)')
+            if num_plots == 2:  # Si pas de référence, afficher aussi l'axe Y
+                axes[1].set_ylabel('Vitesse (m/s)')
+            plt.colorbar(im2, ax=axes[1], label='Magnitude (dB)')
+            axes[1].grid(True, linestyle='--', alpha=0.5)
+            axes[1].axhline(y=0, color='r', linestyle='-', alpha=0.3)
+            
+            # Plot de la RDM de référence si disponible
+            if reference_rdm is not None:
+                vmax_reference = np.max(reference_rdm)
+                vmin_reference = vmax_reference - dynamic_range
+                
+                im3 = axes[2].pcolormesh(range_axis, velocity_axis, reference_rdm[:len(velocity_axis), :len(range_axis)],
+                                    cmap='jet', vmin=vmin_reference, vmax=vmax_reference, shading='auto')
+                axes[2].set_title('Range-Doppler Référence (I2,Q2)')
+                axes[2].set_xlabel('Distance (m)')
+                plt.colorbar(im3, ax=axes[2], label='Magnitude (dB)')
+                axes[2].grid(True, linestyle='--', alpha=0.5)
+                axes[2].axhline(y=0, color='r', linestyle='-', alpha=0.3)
+            
+            # Caractéristiques du déséquilibre
+            imbalance_metrics = calculate_imbalance_metrics(unbalanced_data, alpha, beta)
+            irr_db = imbalance_metrics.get('irr_dB', 'N/A')
+            amp_imbalance = imbalance_metrics.get('amplitude_imbalance_dB', 'N/A')
+            phase_error = imbalance_metrics.get('phase_error_deg', 'N/A')
+            
+            # Ajouter un titre global avec les infos de déséquilibre
+            plt.suptitle(f"Comparaison RDM - {filename_base} - Frame {args.frame}\n"
+                        f"IRR: {irr_db} dB | Amp. Imbalance: {amp_imbalance} dB | Phase Error: {phase_error}°", 
+                        fontsize=14)
+            
+            plt.tight_layout(rect=[0, 0, 1, 0.95])  # Ajuster pour le titre global
+            
+            # Sauvegarder la figure
+            iq_compare_path = f"{args.output_dir}/iq_correction_rdm_frame{args.frame}_{filename_base}.pdf"
+            plt.savefig(iq_compare_path, dpi=300)
+            print(f"Comparaison des RDMs avant/après correction sauvegardée dans {iq_compare_path}")
         # génère tous les plots
         plt.show()
         print(f"\nToutes les visualisations ont été enregistrées dans le répertoire {args.output_dir}")

@@ -1,6 +1,7 @@
 import numpy as np
 from scipy import signal
 from scipy import ndimage
+from src.data_handling.data_loader import extract_frame, reshape_to_chirps
 
 #------------------------------------------------------------------------------
 # Fonctions de détection et d'analyse
@@ -310,6 +311,250 @@ def generate_range_doppler_map(data, window_type='hann', range_padding_factor=2,
     range_doppler_db = 20 * np.log10(np.maximum(np.abs(range_doppler_map), 1e-15))
     
     return range_doppler_db
+
+#------------------------------------------------------------------------------
+# Correction du déséquilibre IQ
+#------------------------------------------------------------------------------
+
+def estimate_imbalance_coefficients_from_channels(data, frame_index=0, params=None, exclude_zero_velocity=True):
+    """
+    Estime les coefficients de déséquilibre IQ alpha et beta en comparant les canaux
+    déséquilibrés (0,1) avec les canaux équilibrés (2,3), tout en ignorant les pics à vitesse nulle.
+    
+    Parameters:
+    -----------
+    data : ndarray
+        Données radar brutes de forme (N_Frame, N_Chan, M)
+    frame_index : int
+        Indice de la frame à utiliser pour l'estimation
+    params : dict
+        Dictionnaire contenant les paramètres du radar
+    exclude_zero_velocity : bool
+        Si True, exclut une zone autour de la vitesse nulle pour éviter le clutter
+        
+    Returns:
+    --------
+    alpha : complex
+        Coefficient alpha du modèle de déséquilibre
+    beta : complex
+        Coefficient beta du modèle de déséquilibre
+    """
+
+    
+    # Extraire les données complexes des deux paires de canaux
+    unbalanced_data = extract_frame(data, frame_index=frame_index, channel_indices=(0, 1))
+    balanced_data = extract_frame(data, frame_index=frame_index, channel_indices=(2, 3))
+    
+    # Vérifier que les paramètres sont fournis
+    if params is None:
+        raise ValueError("Les paramètres radar doivent être fournis")
+    
+    # Reshape les données
+    unbalanced_reshaped = reshape_to_chirps(unbalanced_data, params)
+    balanced_reshaped = reshape_to_chirps(balanced_data, params)
+    
+    # Générer les cartes range-Doppler
+    unbal_rdm, range_axis, velocity_axis = generate_range_doppler_map_with_axes(
+        unbalanced_reshaped, params, window_type='hann'
+    )
+    bal_rdm, _, _ = generate_range_doppler_map_with_axes(
+        balanced_reshaped, params, window_type='hann'
+    )
+    
+    # Supprimer les composantes statiques (optionnel mais recommandé)
+    unbal_rdm = remove_static_components(unbal_rdm, linear_scale=False)
+    bal_rdm = remove_static_components(bal_rdm, linear_scale=False)
+    
+    # Convertir de dB à amplitude linéaire
+    unbal_lin = 10**(unbal_rdm/20)
+    bal_lin = 10**(bal_rdm/20)
+    
+    # Créer un masque pour exclure la région autour de vitesse nulle
+    mask = np.ones_like(unbal_rdm, dtype=bool)
+    if exclude_zero_velocity:
+        # Trouver l'indice correspondant à la vitesse nulle
+        zero_vel_idx = np.abs(velocity_axis).argmin()
+        
+        # Exclure quelques bins autour de la vitesse nulle (±2 bins par exemple)
+        exclusion_width = 2
+        mask[zero_vel_idx-exclusion_width:zero_vel_idx+exclusion_width+1, :] = False
+    
+    # Approche multi-cibles: trouver plusieurs pics potentiels
+    # Pour être considéré comme un pic valide, doit être au dessus d'un certain seuil
+    threshold_db = 20  # dB au-dessus du plancher de bruit
+    noise_floor = np.median(bal_rdm)
+    threshold = noise_floor + threshold_db
+    
+    # Trouver les pics dans les données équilibrées (référence)
+    from scipy.signal import find_peaks
+    
+    # Liste pour stocker les estimations d'alpha et beta pour chaque cible valide
+    alpha_estimates = []
+    beta_estimates = []
+    
+    # Liste pour stocker les coordonnées des pics utilisés
+    peak_coordinates = []
+    
+    # Parcourir chaque colonne de distance
+    for r_idx in range(bal_rdm.shape[1]):
+        # Extraire le profil de vitesse pour cette distance
+        bal_profile = bal_rdm[:, r_idx]
+        
+        # Trouver les pics dans ce profil
+        peaks, _ = find_peaks(bal_profile, height=threshold, distance=3)
+        
+        for peak_idx in peaks:
+            # Ignorer les pics dans la région exclue
+            if not mask[peak_idx, r_idx]:
+                continue
+                
+            # Trouver l'indice de l'image miroir pour ce pic
+            mirror_idx = bal_rdm.shape[0] - peak_idx if peak_idx != bal_rdm.shape[0]//2 else peak_idx
+            
+            # Vérifier que le pic et son miroir sont dans la plage valide
+            if mirror_idx < 0 or mirror_idx >= bal_rdm.shape[0]:
+                continue
+                
+            # Extraire les amplitudes dans les deux cartes
+            bal_peak_amp = bal_lin[peak_idx, r_idx]
+            bal_mirror_amp = bal_lin[mirror_idx, r_idx]
+            unbal_peak_amp = unbal_lin[peak_idx, r_idx]
+            unbal_mirror_amp = unbal_lin[mirror_idx, r_idx]
+            
+            # Calculer le rapport d'image pour les deux canaux
+            # Éviter la division par zéro
+            epsilon = 1e-10
+            IRR_bal = bal_peak_amp / (bal_mirror_amp + epsilon)
+            IRR_unbal = unbal_peak_amp / (unbal_mirror_amp + epsilon)
+            
+            # Si le rapport d'image est trop petit, la cible n'est pas fiable pour l'estimation
+            if IRR_bal < 10:  # Au moins 10 dB de séparation nécessaire
+                continue
+                
+            # Calculer beta à partir du rapport d'image
+            beta_magnitude = 1 / np.sqrt(1 + IRR_unbal)
+            
+            # Estimer la phase de beta
+            beta_phase = np.angle(unbal_mirror_amp) - np.angle(unbal_peak_amp) + np.pi
+            beta = beta_magnitude * np.exp(1j * beta_phase)
+            
+            # Calculer alpha (assumant conservation d'énergie)
+            alpha = np.sqrt(1 - np.abs(beta)**2)
+            
+            # Stocker cette estimation
+            alpha_estimates.append(alpha)
+            beta_estimates.append(beta)
+            
+            # Stocker les coordonnées du pic utilisé
+            range_value = range_axis[r_idx]
+            velocity_value = velocity_axis[peak_idx]
+            peak_coordinates.append((range_value, velocity_value))
+            
+            # AJOUT: Afficher les coordonnées de ce pic
+            print(f"Pic utilisé: Distance = {range_value:.2f} m, Vitesse = {velocity_value:.2f} m/s")
+            print(f"  Amplitude du pic: {bal_rdm[peak_idx, r_idx]:.2f} dB")
+            print(f"  Amplitude du miroir: {bal_rdm[mirror_idx, r_idx]:.2f} dB")
+            print(f"  IRR canal équilibré: {20*np.log10(IRR_bal):.2f} dB")
+            print(f"  IRR canal déséquilibré: {20*np.log10(IRR_unbal):.2f} dB")
+            print(f"  Estimation locale: alpha = {alpha}, beta = {beta}")
+            print(f"  Magnitude beta = {np.abs(beta):.4f}, Phase beta = {np.angle(beta):.4f} rad")
+            print("-" * 60)
+    
+    # Si aucune cible valide n'a été trouvée, utiliser une méthode alternative
+    if not alpha_estimates:
+        print("Aucune cible valide trouvée pour l'estimation par pics. Utilisation de la méthode statistique.")
+        # Utiliser la méthode statistique comme solution de repli
+        E_unbal_xx = np.mean(np.abs(unbalanced_data)**2)
+        E_unbal_xsq = np.mean(unbalanced_data**2)
+        
+        gamma = np.sqrt(E_unbal_xx**2 - np.abs(E_unbal_xsq)**2) / E_unbal_xx
+        phi = 0.5 * np.angle(E_unbal_xsq)
+        
+        alpha = np.sqrt(gamma) * np.exp(1j * phi)
+        beta = np.sqrt(1 - gamma) * np.exp(1j * phi)
+        
+        return alpha, beta
+    
+    # AJOUT: Résumé des pics utilisés
+    print("\nRésumé des pics utilisés pour l'estimation:")
+    for i, (range_val, vel_val) in enumerate(peak_coordinates):
+        print(f"{i+1}. Distance = {range_val:.2f} m, Vitesse = {vel_val:.2f} m/s")
+    
+    # Combiner les estimations (moyenne pondérée par l'amplitude du pic)
+    alpha_final = np.mean(alpha_estimates)
+    beta_final = np.mean(beta_estimates)
+    
+    print(f"\nCoefficients estimés: alpha = {alpha_final}, beta = {beta_final}")
+    print(f"Magnitude de beta = {np.abs(beta_final):.4f}, Phase de beta = {np.angle(beta_final):.4f} rad")
+    print(f"Rapport de réjection d'image estimé: {20*np.log10(np.abs(alpha_final)/np.abs(beta_final)):.2f} dB")
+    
+    return alpha_final, beta_final
+
+def correct_iq_imbalance(complex_data, alpha=None, beta=None, method='stats'):
+    """
+    Corrige le déséquilibre IQ dans les données radar complexes en utilisant la formule :
+    
+    e_eq = (e_des - (β/α*) e_des*) / (|α|² - |β|²)
+    
+    Parameters:
+    -----------
+    complex_data : ndarray
+        Données complexes déséquilibrées (e_des)
+        
+    alpha : complex, optional
+        Coefficient alpha précalculé du modèle de déséquilibre
+        
+    beta : complex, optional
+        Coefficient beta précalculé du modèle de déséquilibre
+        
+    method : str
+        Méthode d'estimation des coefficients ('stats', 'ellipse') si alpha et beta non fournis
+        
+    Returns:
+    --------
+    corrected_data : ndarray
+        Données avec le déséquilibre IQ corrigé (e_eq)
+    """
+    import numpy as np
+    
+    # Utiliser les coefficients fournis si disponibles
+    if alpha is None or beta is None:
+        # Estimer les coefficients avec la méthode demandée
+        if method == 'stats':
+            # Méthode basée sur les statistiques du signal
+            E_xx = np.mean(np.abs(complex_data)**2)
+            E_xsq = np.mean(complex_data**2)
+            
+            # Estimation des coefficients de déséquilibre
+            gamma = np.sqrt(E_xx**2 - np.abs(E_xsq)**2) / E_xx
+            phi = 0.5 * np.angle(E_xsq)
+            
+            # Calcul de alpha et beta
+            alpha = np.sqrt(gamma) * np.exp(1j * phi)
+            beta = np.sqrt(1 - gamma) * np.exp(1j * phi)
+            
+        elif method == 'ellipse':
+            # Méthode d'ajustement d'ellipse (voir implémentation précédente)
+            print("Méthode ellipse non implémentée. Utilisation de 'stats'.")
+            return correct_iq_imbalance(complex_data, method='stats')
+            
+        else:
+            raise ValueError(f"Méthode inconnue: {method}")
+    
+    # Calcul du dénominateur
+    denominator = np.abs(alpha)**2 - np.abs(beta)**2
+    
+    # Vérifier que le dénominateur n'est pas trop proche de zéro
+    if np.abs(denominator) < 1e-10:
+        raise ValueError("Dénominateur trop proche de zéro. Coefficients de déséquilibre invalides.")
+    
+    # Calcul du terme (β/α*)
+    beta_over_alpha_conj = beta / np.conjugate(alpha)
+    
+    # Correction du déséquilibre selon la formule e_eq = (e_des - (β/α*) e_des*) / (|α|² - |β|²)
+    corrected_data = (complex_data - beta_over_alpha_conj * np.conjugate(complex_data)) / denominator
+    
+    return corrected_data
 
 #------------------------------------------------------------------------------
 # Fonctions de détection et d'analyse
@@ -682,7 +927,6 @@ def apply_doppler_compensation(data, velocity, params):
     
     return compensated_data
 
-
 def filter_range_doppler_map(range_doppler_map, filter_type='median', kernel_size=3):
     """
     Applique un filtre sur la carte Range-Doppler pour réduire le bruit
@@ -711,7 +955,6 @@ def filter_range_doppler_map(range_doppler_map, filter_type='median', kernel_siz
         raise ValueError(f"Type de filtre inconnu: {filter_type}")
     
     return filtered_map
-
 
 def generate_coherent_integration(data_frames, num_frames=None, window_type='hanning'):
     """

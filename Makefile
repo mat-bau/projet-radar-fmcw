@@ -18,7 +18,7 @@ ANIM_SCRIPT = animate_radar.py
 find_file_by_number = $(shell ls -1 $(1)/$(2).* 2>/dev/null | head -1 || echo "")
 
 # Cibles principales, mettre les toutes regles sinon ca bug
-.PHONY: all setup run-% runanim-% runanim3d-% runanimcombined-% clean help
+.PHONY: all setup run-% runanim-% runanim3d-% runanimcombined-% runcalibration-% clean help
 
 # Cible par défaut
 all: setup
@@ -54,7 +54,7 @@ run-labo2-%:
 		exit 1; \
 	fi
 	@echo "Analyse du fichier $(FILE)"
-	RADAR_DATA_FILE=$(FILE) $(PYTHON) $(EXAMPLES_DIR)/$(MAIN_SCRIPT) --output-dir=$(OUTPUT_DIR)/labo2/$*
+	RADAR_DATA_FILE=$(FILE) $(PYTHON) $(EXAMPLES_DIR)/$(MAIN_SCRIPT) --output-dir=$(OUTPUT_DIR)/labo2/$* --frame 20 --estimate-iq-imbalance --correct-iq
 
 # Animation 2D
 runanim-labo1-%:
@@ -124,6 +124,29 @@ runanimcombined-labo2-%:
 	@echo "Création d'une animation combinée pour le fichier $(FILE)"
 	@mkdir -p $(OUTPUT_DIR)/labo2/$*
 	RADAR_DATA_FILE="$(FILE)" $(PYTHON) $(EXAMPLES_DIR)/$(ANIM_SCRIPT) --output-dir=$(OUTPUT_DIR)/labo2/$* --fps=10 --remove-static --dynamic-range=20 --view-type=combined
+
+# Exécution de la calibration IQ
+runcalibration-labo2-%:
+	@echo "Recherche du fichier correspondant au numéro $* dans $(LABO2_DIR)"
+	$(eval FILE := $(call find_file_by_number,$(LABO2_DIR),$*))
+	@if [ -z "$(FILE)" ]; then \
+		echo "Erreur: Aucun fichier commençant par $*. n'a été trouvé dans $(LABO2_DIR)"; \
+		exit 1; \
+	fi
+	@echo "Calibration IQ du fichier $(FILE)"
+	@mkdir -p $(OUTPUT_DIR)/labo2/$*
+	RADAR_DATA_FILE=$(FILE) $(PYTHON) $(EXAMPLES_DIR)/iq_calibration_app.py --output-dir=$(OUTPUT_DIR)/labo2/$* --save-calibration --save-rdm
+
+runanimiq-labo2-%:
+	@echo "Recherche du fichier correspondant au numéro $* dans $(LABO2_DIR)"
+	$(eval FILE := $(call find_file_by_number,$(LABO2_DIR),$*))
+	@if [ -z "$(FILE)" ]; then \
+		echo "Erreur: Aucun fichier commençant par $*. n'a été trouvé dans $(LABO2_DIR)"; \
+		exit 1; \
+	fi
+	@echo "Création d'une animation avec correction IQ pour le fichier $(FILE)"
+	@mkdir -p $(OUTPUT_DIR)/labo2/$*
+	RADAR_DATA_FILE=$(FILE) $(PYTHON) $(EXAMPLES_DIR)/$(ANIM_SCRIPT) --output-dir=$(OUTPUT_DIR)/labo2/$* --view-type=2d --balance-iq
 
 # Nettoyage
 clean:

@@ -22,7 +22,11 @@ from src.signal_processing.range_doppler_map import (
     estimate_target_parameters
 )
 from src.visualization.plotting import plot_range_doppler, visualize_3d_range_doppler, create_combined_visualization
-
+from src.signal_processing.iq_calibration import (
+    estimate_imbalance_parameters,
+    correct_imbalance,
+    calculate_imbalance_metrics
+)
 
 def main():
     """Fonction principale pour l'animation des données FMCW avec différents types de visualisation"""
@@ -70,6 +74,10 @@ def main():
                        help='Taille du noyau pour le filtre médian 2D')
     parser.add_argument('--estimate-targets', action='store_true',
                        help='Estimer les paramètres précis des cibles par interpolation')
+    parser.add_argument('--balance-iq', action='store_true',
+                       help='Afficher une animation supplémentaire avec correction du déséquilibre IQ')
+    parser.add_argument('--reference-frame', type=int, default=0,
+                       help='Frame à utiliser pour estimer les paramètres de déséquilibre IQ')
     args = parser.parse_args()
     
     # Si aucun fichier n'est spécifié dans les arguments, utiliser la variable d'environnement
@@ -121,8 +129,6 @@ def main():
     print(f"Nombre de frames: {data.shape[0]}")
     print(f"Nombre de canaux: {data.shape[1]}")
     print(f"Nombre total d'échantillons par frame: {data.shape[2]}")
-    print(f"Zero-padding en distance: {args.range_padding}")
-    print(f"Zero-padding en vitesse: {args.doppler_padding}")
     print("\nParamètres du radar:")
     print(f"Fréquence porteuse: {params['start_freq']/1e9:.2f} GHz")
     print(f"Bande passante: {params['bandwidth']/1e6:.2f} MHz")
@@ -145,7 +151,32 @@ def main():
     
     print(f"Animation des frames {args.start_frame} à {end_frame-1} (total: {end_frame-args.start_frame})")
     
-    # Préparer l'animation
+    # Estimer les paramètres de déséquilibre IQ si demandé
+    alpha = None
+    beta = None
+    if args.balance_iq:
+        print("\nEstimation des paramètres de déséquilibre IQ...")
+        # Vérifier que la frame de référence existe
+        if args.reference_frame >= data.shape[0]:
+            print(f"Erreur: La frame de référence {args.reference_frame} n'existe pas. Utilisation de la frame 0.")
+            args.reference_frame = 0
+        
+        # Extraire les données pour l'estimation
+        unbalanced_data = extract_frame(data, frame_index=args.reference_frame, channel_indices=(0, 1))
+        if data.shape[1] >= 4:  # Si nous avons des canaux de référence
+            reference_data = extract_frame(data, frame_index=args.reference_frame, channel_indices=(2, 3))
+            alpha, beta = estimate_imbalance_parameters(unbalanced_data, reference_data)
+        else:
+            alpha, beta = estimate_imbalance_parameters(unbalanced_data)
+        
+        # Calculer et afficher les métriques
+        metrics = calculate_imbalance_metrics(unbalanced_data, alpha, beta)
+        print(f"Déséquilibre d'amplitude: {metrics['amplitude_imbalance_dB']:.2f} dB")
+        print(f"Erreur de phase: {metrics['phase_error_deg']:.2f}°")
+        if 'irr_dB' in metrics:
+            print(f"IRR: {metrics['irr_dB']:.2f} dB")
+    
+    # Préparer l'animation originale
     print(f"Préparation de l'animation ({args.view_type})...")
     # Initialiser la frame de départ pour l'initialisation
     frame_idx = args.start_frame
@@ -158,9 +189,20 @@ def main():
         bg_complex_data = extract_frame(background_data, frame_index=frame_idx, channel_indices=(0, 1))
         complex_data = subtract_background(complex_data, bg_complex_data)
     
+    # Préparer les données corrigées si demandé
+    complex_data_corrected = None
+    if args.balance_iq and alpha is not None and beta is not None:
+        complex_data_corrected = correct_imbalance(complex_data, alpha, beta)
+    
     # Transformer les données en 2D (chirps x échantillons)
     radar_data = reshape_to_chirps(complex_data, params, "without_pause")
     
+    # Préparer les données radar corrigées si demandé
+    radar_data_corrected = None
+    if args.balance_iq and complex_data_corrected is not None:
+        radar_data_corrected = reshape_to_chirps(complex_data_corrected, params, "without_pause")
+    
+    # Générer les profils et cartes
     range_profile = generate_range_profile(radar_data, window_type=args.window_type)
     range_doppler_map, range_axis, velocity_axis = generate_range_doppler_map_with_axes(
         radar_data, 
@@ -172,11 +214,130 @@ def main():
         kernel_size=args.filter_size
     )
     
+    # Générer les profils et cartes corrigés si demandé
+    range_profile_corrected = None
+    range_doppler_map_corrected = None
+    if args.balance_iq and radar_data_corrected is not None:
+        range_profile_corrected = generate_range_profile(radar_data_corrected, window_type=args.window_type)
+        range_doppler_map_corrected, _, _ = generate_range_doppler_map_with_axes(
+            radar_data_corrected, 
+            params,
+            window_type=args.window_type,
+            range_padding_factor=args.range_padding,
+            doppler_padding_factor=args.doppler_padding,
+            apply_2d_filter=args.apply_2d_filter,
+            kernel_size=args.filter_size
+        )
+    
     # Supprimer les composantes statiques si demandé
     if args.remove_static:
         range_doppler_map = remove_static_components(range_doppler_map, linear_scale=False)
+        if args.balance_iq and range_doppler_map_corrected is not None:
+            range_doppler_map_corrected = remove_static_components(range_doppler_map_corrected, linear_scale=False)
     
     # Appliquer un seuil de clutter si spécifié
+    if args.clutter_threshold > 0:
+        range_doppler_map = apply_clutter_threshold(range_doppler_map, args.clutter_threshold)
+        if args.balance_iq and range_doppler_map_corrected is not None:
+            range_doppler_map_corrected = apply_clutter_threshold(range_doppler_map_corrected, args.clutter_threshold)
+    
+    # Variables pour stocker les éléments de visualisation
+    mesh = None
+    scatter = None
+    surf = None
+    title = None
+    
+    # Créer l'animation originale
+    create_animation(
+        data, params, background_data, 
+        args, filename_base, end_frame,
+        range_axis, velocity_axis,
+        view_type=args.view_type,
+        suffix=""
+    )
+    
+    # Créer l'animation avec correction IQ si demandé
+    if args.balance_iq and alpha is not None and beta is not None:
+        print("\nCréation de l'animation avec correction du déséquilibre IQ...")
+        create_animation(
+            data, params, background_data, 
+            args, filename_base, end_frame,
+            range_axis, velocity_axis,
+            view_type=args.view_type,
+            suffix="_balanced",
+            alpha=alpha,
+            beta=beta
+        )
+
+def create_animation(data, params, background_data, args, filename_base, end_frame, 
+                    range_axis, velocity_axis, view_type='combined', suffix="", 
+                    alpha=None, beta=None):
+    """
+    Crée une animation à partir des données radar
+    
+    Parameters:
+    -----------
+    data : ndarray
+        Données radar
+    params : dict
+        Paramètres du radar
+    background_data : ndarray
+        Données de fond
+    args : argparse.Namespace
+        Arguments de la ligne de commande
+    filename_base : str
+        Nom de base du fichier pour la sauvegarde
+    end_frame : int
+        Nombre total de frames à traiter
+    range_axis : ndarray
+        Axe de distance
+    velocity_axis : ndarray
+        Axe de vitesse
+    view_type : str
+        Type de visualisation ('combined', '2d', '3d')
+    suffix : str
+        Suffixe pour le nom du fichier de sortie
+    alpha : complex
+        Paramètre alpha pour la correction IQ
+    beta : complex
+        Paramètre beta pour la correction IQ
+    """
+    apply_iq_correction = alpha is not None and beta is not None
+    
+    # Initialiser la frame de départ
+    frame_idx = args.start_frame
+    
+    # Extraire et traiter les données de la première frame
+    complex_data = extract_frame(data, frame_index=frame_idx, channel_indices=(0, 1))
+    
+    # Soustraire le fond si spécifié
+    if background_data is not None:
+        bg_complex_data = extract_frame(background_data, frame_index=frame_idx, channel_indices=(0, 1))
+        complex_data = subtract_background(complex_data, bg_complex_data)
+    
+    # Appliquer la correction IQ si demandée
+    if apply_iq_correction:
+        complex_data = correct_imbalance(complex_data, alpha, beta)
+    
+    # Transformer les données
+    radar_data = reshape_to_chirps(complex_data, params, "without_pause")
+    
+    # Générer les profils et cartes
+    range_profile = generate_range_profile(radar_data, window_type=args.window_type)
+    range_doppler_map, range_axis, velocity_axis = generate_range_doppler_map_with_axes(
+        radar_data, 
+        params,
+        window_type=args.window_type,
+        range_padding_factor=args.range_padding,
+        doppler_padding_factor=args.doppler_padding,
+        apply_2d_filter=args.apply_2d_filter,
+        kernel_size=args.filter_size
+    )
+    
+    # Appliquer les traitements supplémentaires
+    if args.remove_static:
+        range_doppler_map = remove_static_components(range_doppler_map, linear_scale=False)
+    
     if args.clutter_threshold > 0:
         range_doppler_map = apply_clutter_threshold(range_doppler_map, args.clutter_threshold)
     
@@ -187,14 +348,14 @@ def main():
     title = None
     
     # Initialiser la figure et les axes en fonction du type de visualisation
-    if args.view_type == 'combined':
+    if view_type == 'combined':
         # Créer la figure et les axes avec la fonction de visualisation combinée
         fig, (ax_range, ax_velocity, ax_rdm) = create_combined_visualization(
             range_doppler_map, 
             range_profile, 
             range_axis, 
             velocity_axis, 
-            title=f"Analyse FMCW - {filename_base} - Frame {frame_idx}/{end_frame-1}",
+            title=f"Analyse FMCW{' (IQ Corrigé)' if apply_iq_correction else ''} - {filename_base} - Frame {frame_idx}/{end_frame-1}",
             dynamic_range=args.dynamic_range
         )
         
@@ -218,7 +379,7 @@ def main():
                 return range_line, velocity_line, rdm_mesh, title
             
             # Mettre à jour le titre
-            title.set_text(f"Analyse FMCW - {filename_base} - Frame {frame_idx}/{end_frame-1}")
+            title.set_text(f"Analyse FMCW{' (IQ Corrigé)' if apply_iq_correction else ''} - {filename_base} - Frame {frame_idx}/{end_frame-1}")
             
             # Extraire et traiter les données de la frame actuelle
             complex_data = extract_frame(data, frame_index=frame_idx, channel_indices=(0, 1))
@@ -227,6 +388,10 @@ def main():
             if background_data is not None:
                 bg_complex_data = extract_frame(background_data, frame_index=frame_idx, channel_indices=(0, 1))
                 complex_data = subtract_background(complex_data, bg_complex_data)
+            
+            # Appliquer la correction IQ si demandée
+            if apply_iq_correction:
+                complex_data = correct_imbalance(complex_data, alpha, beta)
             
             radar_data = reshape_to_chirps(complex_data, params, "without_pause")
             
@@ -307,7 +472,7 @@ def main():
             
             return range_line, velocity_line, rdm_mesh, title
         
-    elif args.view_type == '2d':
+    elif view_type == '2d':
         fig, ax = plt.subplots(figsize=(10, 8))
         ax.set_xlabel('Distance (m)')
         ax.set_ylabel('Vitesse (m/s)')
@@ -319,7 +484,7 @@ def main():
         ax.set_ylim(velocity_axis[0], velocity_axis[-1])
         
         # Initialiser le titre
-        title = ax.set_title(f"Range-Doppler Map - {filename_base} - Frame {frame_idx}/{end_frame-1}")
+        title = ax.set_title(f"Range-Doppler Map{' (IQ Corrigé)' if apply_iq_correction else ''} - {filename_base} - Frame {frame_idx}/{end_frame-1}")
         
         # Limiter la plage dynamique
         vmax = np.max(range_doppler_map)
@@ -343,7 +508,7 @@ def main():
                 return title, mesh
             
             # Mettre à jour le titre
-            title.set_text(f"Range-Doppler Map - {filename_base} - Frame {frame_idx}/{end_frame-1}")
+            title.set_text(f"Range-Doppler Map{' (IQ Corrigé)' if apply_iq_correction else ''} - {filename_base} - Frame {frame_idx}/{end_frame-1}")
             
             # Extraire et traiter les données de la frame
             complex_data = extract_frame(data, frame_index=frame_idx, channel_indices=(0, 1))
@@ -352,6 +517,10 @@ def main():
             if background_data is not None:
                 bg_complex_data = extract_frame(background_data, frame_index=frame_idx, channel_indices=(0, 1))
                 complex_data = subtract_background(complex_data, bg_complex_data)
+            
+            # Appliquer la correction IQ si demandée
+            if apply_iq_correction:
+                complex_data = correct_imbalance(complex_data, alpha, beta)
             
             radar_data = reshape_to_chirps(complex_data, params, "without_pause")
             
@@ -386,7 +555,7 @@ def main():
                 # Détection de cibles si activée
                 if args.detect_targets:
                     # Vérifier si scatter existe et est dans les enfants de l'axe avant d'essayer de le supprimer
-                    if scatter is not None and scatter in ax_rdm.collections:
+                    if scatter is not None and scatter in ax.collections:
                         scatter.remove()
                         
                     try:
@@ -424,7 +593,7 @@ def main():
             
             return title, mesh
         
-    elif args.view_type == '3d':
+    elif view_type == '3d':
         fig = plt.figure(figsize=(12, 10))
         ax = fig.add_subplot(111, projection='3d')
         ax.set_xlabel('Distance (m)')
@@ -441,7 +610,7 @@ def main():
         ax.set_zlim(vmin, vmax + 5)  # Ajouter un peu de marge sur le dessus
         
         # Initialiser le titre
-        title = ax.set_title(f"3D Range-Doppler - {filename_base} - Frame {frame_idx}/{end_frame-1}")
+        title = ax.set_title(f"3D Range-Doppler{' (IQ Corrigé)' if apply_iq_correction else ''} - {filename_base} - Frame {frame_idx}/{end_frame-1}")
         
         # Créer la grille pour le tracé 3D
         X, Y = np.meshgrid(range_axis, velocity_axis)
@@ -465,7 +634,7 @@ def main():
                 return title,
             
             # Mettre à jour le titre
-            title.set_text(f"3D Range-Doppler - {filename_base} - Frame {frame_idx}/{end_frame-1}")
+            title.set_text(f"3D Range-Doppler{' (IQ Corrigé)' if apply_iq_correction else ''} - {filename_base} - Frame {frame_idx}/{end_frame-1}")
             
             # Extraire et traiter les données de la frame
             complex_data = extract_frame(data, frame_index=frame_idx, channel_indices=(0, 1))
@@ -474,6 +643,10 @@ def main():
             if background_data is not None:
                 bg_complex_data = extract_frame(background_data, frame_index=frame_idx, channel_indices=(0, 1))
                 complex_data = subtract_background(complex_data, bg_complex_data)
+            
+            # Appliquer la correction IQ si demandée
+            if apply_iq_correction:
+                complex_data = correct_imbalance(complex_data, alpha, beta)
             
             radar_data = reshape_to_chirps(complex_data, params, "without_pause")
             
@@ -522,7 +695,7 @@ def main():
                 ax.set_zlabel('Magnitude (dB)')
                 
                 # Réinitialiser le titre
-                title = ax.set_title(f"3D Range-Doppler - {filename_base} - Frame {frame_idx}/{end_frame-1}")
+                title = ax.set_title(f"3D Range-Doppler{' (IQ Corrigé)' if apply_iq_correction else ''} - {filename_base} - Frame {frame_idx}/{end_frame-1}")
                 
                 # Ajouter une ligne à vitesse 0 pour référence
                 zero_vel_idx = np.abs(velocity_axis).argmin()
@@ -540,8 +713,9 @@ def main():
                         interval=1000/args.fps, blit=True)
     
     # Enregistrer l'animation
-    view_type_str = args.view_type
-    output_file = os.path.join(args.output_dir, f"anim_{view_type_str}_{filename_base}.mp4")
+    view_type_str = view_type
+    anim_suffix = f"_iq_corrected{suffix}" if apply_iq_correction else suffix
+    output_file = os.path.join(args.output_dir, f"anim_{view_type_str}{anim_suffix}_{filename_base}.mp4")
     print(f"Enregistrement de l'animation dans {output_file}...")
     
     # Utiliser ffmpeg pour une meilleure qualité

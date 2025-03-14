@@ -253,3 +253,134 @@ def create_combined_visualization(range_doppler_map, range_profile, range_axis, 
     plt.tight_layout()
     
     return fig, (ax_range, ax_velocity, ax_rdm)
+
+def plot_dual_range_doppler(unbalanced_rdm, balanced_rdm, range_axis, velocity_axis, 
+                           title="Comparaison des cartes Range-Doppler", 
+                           dynamic_range=40, 
+                           save_path=None,
+                           interactive=True):
+    """
+    Affiche deux cartes Range-Doppler côte à côte avec fonctionnalité de survol pour voir l'amplitude
+    
+    Parameters:
+    -----------
+    unbalanced_rdm : ndarray
+        Carte Range-Doppler des signaux déséquilibrés (canaux 0,1)
+    balanced_rdm : ndarray
+        Carte Range-Doppler des signaux équilibrés (canaux 2,3)
+    range_axis : ndarray
+        Axe de distance en mètres
+    velocity_axis : ndarray
+        Axe de vitesse en m/s
+    title : str
+        Titre du graphique
+    dynamic_range : int
+        Plage dynamique en dB pour la visualisation
+    save_path : str, optional
+        Chemin où sauvegarder l'image
+    interactive : bool
+        Activer l'interactivité pour afficher les valeurs au survol
+    
+    Returns:
+    --------
+    fig : Figure
+        Figure matplotlib
+    """
+    # Création de la figure avec 2 sous-graphes horizontaux
+    fig, axes = plt.subplots(1, 2, figsize=(16, 7))
+    
+    # S'assurer que les dimensions correspondent
+    unbalanced_plot = unbalanced_rdm[:len(velocity_axis), :len(range_axis)]
+    balanced_plot = balanced_rdm[:len(velocity_axis), :len(range_axis)]
+    
+    # Calculer la plage dynamique commune pour une meilleure comparaison
+    vmax = max(np.max(unbalanced_plot), np.max(balanced_plot))
+    vmin = vmax - dynamic_range
+    
+    # Tracé de la carte Range-Doppler déséquilibrée (canaux 0,1)
+    im1 = axes[0].pcolormesh(range_axis, velocity_axis, unbalanced_plot, 
+                           cmap='jet', vmin=vmin, vmax=vmax, shading='auto')
+    axes[0].set_title('Signal déséquilibré (canaux 0,1)')
+    axes[0].set_xlabel('Distance (m)')
+    axes[0].set_ylabel('Vitesse (m/s)')
+    axes[0].grid(True, linestyle='--', alpha=0.5)
+    axes[0].axhline(y=0, color='r', linestyle='-', alpha=0.3)
+    fig.colorbar(im1, ax=axes[0], label='Magnitude (dB)')
+    
+    # Tracé de la carte Range-Doppler équilibrée (canaux 2,3)
+    im2 = axes[1].pcolormesh(range_axis, velocity_axis, balanced_plot, 
+                           cmap='jet', vmin=vmin, vmax=vmax, shading='auto')
+    axes[1].set_title('Signal équilibré (canaux 2,3)')
+    axes[1].set_xlabel('Distance (m)')
+    axes[1].set_ylabel('Vitesse (m/s)')
+    axes[1].grid(True, linestyle='--', alpha=0.5)
+    axes[1].axhline(y=0, color='r', linestyle='-', alpha=0.3)
+    fig.colorbar(im2, ax=axes[1], label='Magnitude (dB)')
+    
+    # Titre global
+    fig.suptitle(title, fontsize=16)
+    plt.tight_layout()
+    
+    # Créer des annotations pour l'affichage des valeurs
+    annot1 = axes[0].annotate("", xy=(0,0), xytext=(10,10),
+                            textcoords="offset points",
+                            bbox=dict(boxstyle="round", fc="w", alpha=0.7),
+                            arrowprops=dict(arrowstyle="->"))
+    annot1.set_visible(False)
+    
+    annot2 = axes[1].annotate("", xy=(0,0), xytext=(10,10),
+                            textcoords="offset points",
+                            bbox=dict(boxstyle="round", fc="w", alpha=0.7),
+                            arrowprops=dict(arrowstyle="->"))
+    annot2.set_visible(False)
+    
+    # Créer des événements interactifs si demandé
+    if interactive:
+        def hover(event):
+            # Fonction appelée lors du survol de la souris
+            if event.inaxes == axes[0]:
+                update_annot(event, annot1, im1, unbalanced_plot, range_axis, velocity_axis)
+            elif event.inaxes == axes[1]:
+                update_annot(event, annot2, im2, balanced_plot, range_axis, velocity_axis)
+                
+        def update_annot(event, annot, im, data, ranges, velocities):
+            # Met à jour l'annotation avec la valeur sous le curseur
+            x, y = event.xdata, event.ydata
+            if x is not None and y is not None:
+                # Trouver les indices les plus proches dans les axes
+                range_idx = np.abs(ranges - x).argmin()
+                vel_idx = np.abs(velocities - y).argmin()
+                
+                # S'assurer que les indices sont dans les limites
+                if 0 <= vel_idx < len(velocities) and 0 <= range_idx < len(ranges):
+                    val = data[vel_idx, range_idx]
+                    
+                    # Mettre à jour l'annotation
+                    annot.xy = (x, y)
+                    text = f"Distance: {ranges[range_idx]:.1f}m\nVitesse: {velocities[vel_idx]:.1f}m/s\nAmplitude: {val:.1f}dB"
+                    annot.set_text(text)
+                    annot.set_visible(True)
+                    fig.canvas.draw_idle()
+                else:
+                    annot.set_visible(False)
+                    fig.canvas.draw_idle()
+            else:
+                annot.set_visible(False)
+                fig.canvas.draw_idle()
+                
+        def leave_axes(event):
+            # Cache les annotations quand la souris quitte les axes
+            annot1.set_visible(False)
+            annot2.set_visible(False)
+            fig.canvas.draw_idle()
+        
+        # Connecter les événements
+        fig.canvas.mpl_connect("motion_notify_event", hover)
+        fig.canvas.mpl_connect("axes_leave_event", leave_axes)
+    
+    # Sauvegarde si un chemin est fourni
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, dpi=300)
+    
+    return fig
