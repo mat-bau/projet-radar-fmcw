@@ -136,6 +136,8 @@ def subtract_background(data, background_data):
         Données radar avec le fond soustrait
     """
     # Update du labo2 : il faut faire la moyenne des données de fond
+    # et on fait la moyenne de plein de frames pour réduire les bruits "extrêmes" et garder les bruits "constants" du hardware
+    background_data = np.mean(background_data, axis=0)
 
     # S'assurer que les données ont la même forme
     if data.shape != background_data.shape:
