@@ -126,17 +126,6 @@ runanimcombined-labo2-%:
 	RADAR_DATA_FILE="$(FILE)" $(PYTHON) $(EXAMPLES_DIR)/$(ANIM_SCRIPT) --output-dir=$(OUTPUT_DIR)/labo2/$* --fps=10 --remove-static --dynamic-range=20 --view-type=combined
 
 # Exécution de la calibration IQ
-runcalibration-labo2-%:
-	@echo "Recherche du fichier correspondant au numéro $* dans $(LABO2_DIR)"
-	$(eval FILE := $(call find_file_by_number,$(LABO2_DIR),$*))
-	@if [ -z "$(FILE)" ]; then \
-		echo "Erreur: Aucun fichier commençant par $*. n'a été trouvé dans $(LABO2_DIR)"; \
-		exit 1; \
-	fi
-	@echo "Calibration IQ du fichier $(FILE)"
-	@mkdir -p $(OUTPUT_DIR)/labo2/$*
-	RADAR_DATA_FILE=$(FILE) $(PYTHON) $(EXAMPLES_DIR)/iq_calibration_app.py --output-dir=$(OUTPUT_DIR)/labo2/$* --save-calibration --save-rdm
-
 runanimiq-labo2-%:
 	@echo "Recherche du fichier correspondant au numéro $* dans $(LABO2_DIR)"
 	$(eval FILE := $(call find_file_by_number,$(LABO2_DIR),$*))
@@ -169,15 +158,17 @@ help:
 	@echo ""
 	@echo "Commandes pour les laboratoires :"
 	@echo "  make run-labo1-NUM              - Analyse le fichier NUM.* dans data/Labo1"
-	@echo "  make run-labo2-NUM              - Analyse le fichier NUM.* dans data/Labo2"
+	@echo "  make run-labo2-NUM              - Analyse le fichier NUM.* dans data/Labo2 avec correction IQ"
 	@echo "  make runanim-labo1-NUM          - Crée une animation 2D du fichier NUM.* dans data/Labo1"
 	@echo "  make runanim-labo2-NUM          - Crée une animation 2D du fichier NUM.* dans data/Labo2"
 	@echo "  make runanim3d-labo1-NUM        - Crée une animation 3D du fichier NUM.* dans data/Labo1"
 	@echo "  make runanim3d-labo2-NUM        - Crée une animation 3D du fichier NUM.* dans data/Labo2"
 	@echo "  make runanimcombined-labo1-NUM  - Crée une animation combinée du fichier NUM.* dans data/Labo1"
 	@echo "  make runanimcombined-labo2-NUM  - Crée une animation combinée du fichier NUM.* dans data/Labo2"
+	@echo "  make runanimiq-labo2-NUM        - Crée une animation 2D avec correction IQ pour le fichier NUM.* dans data/Labo2"
 	@echo ""
 	@echo "Exemples:"
 	@echo "  make run-labo1-1                - Analyse le fichier qui commence par 1. dans data/Labo1"
-	@echo "  make runanim-labo2-4            - Crée une animation 2D du fichier qui commence par 4. dans data/Labo2 et sauvegarde les images dans output/labo2/4"
+	@echo "  make runanim-labo2-4            - Crée une animation 2D du fichier qui commence par 4. dans data/Labo2"
 	@echo "  make runanimcombined-labo1-2    - Crée une animation combinée du fichier qui commence par 2. dans data/Labo1"
+	@echo "  make runanimiq-labo2-5          - Crée une animation avec correction IQ pour le fichier qui commence par 5. dans data/Labo2"
