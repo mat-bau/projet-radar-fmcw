@@ -156,7 +156,7 @@ help:
 	@echo "  make clean                      - Nettoyer les fichiers temporaires"
 	@echo "  make help                       - Afficher cette aide"
 	@echo ""
-	@echo "Commandes pour les laboratoires :"
+	@echo "Commandes pour visualiser:"
 	@echo "  make run-labo1-NUM              - Analyse le fichier NUM.* dans data/Labo1"
 	@echo "  make run-labo2-NUM              - Analyse le fichier NUM.* dans data/Labo2 avec correction IQ"
 	@echo "  make runanim-labo1-NUM          - Crée une animation 2D du fichier NUM.* dans data/Labo1"
