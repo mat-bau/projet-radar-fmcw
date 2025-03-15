@@ -19,14 +19,12 @@ from src.signal_processing.range_doppler_map import (
     apply_cfar_detector,
     remove_static_components,
     apply_clutter_threshold,
-    estimate_target_parameters
-)
-from src.visualization.plotting import plot_range_doppler, visualize_3d_range_doppler, create_combined_visualization
-from src.signal_processing.iq_calibration import (
+    estimate_target_parameters,
     estimate_imbalance_parameters,
     correct_imbalance,
     calculate_imbalance_metrics
 )
+from src.visualization.plotting import create_combined_visualization
 
 def main():
     """Fonction principale pour l'animation des données FMCW avec différents types de visualisation"""

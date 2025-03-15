@@ -1,5 +1,6 @@
 import numpy as np
 from scipy import signal
+from scipy import optimize
 from scipy import ndimage
 from src.data_handling.data_loader import extract_frame, reshape_to_chirps
 
@@ -313,184 +314,207 @@ def generate_range_doppler_map(data, window_type='hann', range_padding_factor=2,
     return range_doppler_db
 
 #------------------------------------------------------------------------------
-# Correction du déséquilibre IQ
+# Correction du déséquilibre IQ (MS2)
 #------------------------------------------------------------------------------
 
-def estimate_imbalance_coefficients_from_channels(data, frame_index=0, params=None, exclude_zero_velocity=True):
+def estimate_imbalance_parameters(data_imbalanced, data_reference=None, method='direct'):
     """
-    Estime les coefficients de déséquilibre IQ alpha et beta en comparant les canaux
-    déséquilibrés (0,1) avec les canaux équilibrés (2,3), tout en ignorant les pics à vitesse nulle.
+    Estime les paramètres α et β du déséquilibre IQ.
+    
+    Les paramètres α et β sont liés au modèle de déséquilibre:
+    e_des = α·e_eq + β·e_eq*
+    
+    où:
+    - e_des est l'enveloppe complexe déséquilibrée (mesurée)
+    - e_eq est l'enveloppe complexe équilibrée (idéale)
+    - e_eq* est le conjugué complexe de e_eq
+    - α et β sont les paramètres de déséquilibre à estimer
     
     Parameters:
     -----------
-    data : ndarray
-        Données radar brutes de forme (N_Frame, N_Chan, M)
-    frame_index : int
-        Indice de la frame à utiliser pour l'estimation
-    params : dict
-        Dictionnaire contenant les paramètres du radar
-    exclude_zero_velocity : bool
-        Si True, exclut une zone autour de la vitesse nulle pour éviter le clutter
+    data_imbalanced : ndarray complex
+        Données complexes déséquilibrées (I + jQ)
+    data_reference : ndarray complex, optional
+        Données complexes de référence (équilibrées)
+    method : str
+        Méthode d'estimation ('direct', 'statistical')
         
     Returns:
     --------
     alpha : complex
-        Coefficient alpha du modèle de déséquilibre
+        Paramètre alpha du modèle de déséquilibre
     beta : complex
-        Coefficient beta du modèle de déséquilibre
+        Paramètre beta du modèle de déséquilibre
     """
-
-    
-    # Extraire les données complexes des deux paires de canaux
-    unbalanced_data = extract_frame(data, frame_index=frame_index, channel_indices=(0, 1))
-    balanced_data = extract_frame(data, frame_index=frame_index, channel_indices=(2, 3))
-    
-    # Vérifier que les paramètres sont fournis
-    if params is None:
-        raise ValueError("Les paramètres radar doivent être fournis")
-    
-    # Reshape les données
-    unbalanced_reshaped = reshape_to_chirps(unbalanced_data, params)
-    balanced_reshaped = reshape_to_chirps(balanced_data, params)
-    
-    # Générer les cartes range-Doppler
-    unbal_rdm, range_axis, velocity_axis = generate_range_doppler_map_with_axes(
-        unbalanced_reshaped, params, window_type='hann'
-    )
-    bal_rdm, _, _ = generate_range_doppler_map_with_axes(
-        balanced_reshaped, params, window_type='hann'
-    )
-    
-    # Supprimer les composantes statiques (optionnel mais recommandé)
-    unbal_rdm = remove_static_components(unbal_rdm, linear_scale=False)
-    bal_rdm = remove_static_components(bal_rdm, linear_scale=False)
-    
-    # Convertir de dB à amplitude linéaire
-    unbal_lin = 10**(unbal_rdm/20)
-    bal_lin = 10**(bal_rdm/20)
-    
-    # Créer un masque pour exclure la région autour de vitesse nulle
-    mask = np.ones_like(unbal_rdm, dtype=bool)
-    if exclude_zero_velocity:
-        # Trouver l'indice correspondant à la vitesse nulle
-        zero_vel_idx = np.abs(velocity_axis).argmin()
+    # Si une référence équilibrée est disponible et la méthode est 'direct'
+    if data_reference is not None and method == 'direct':
+        # Méthode des moindres carrés pour résoudre le système
+        # On forme le système matriciel: e_des = α·e_eq + β·e_eq*
+        A = np.column_stack([data_reference, np.conjugate(data_reference)])
+        b = data_imbalanced
         
-        # Exclure quelques bins autour de la vitesse nulle (±2 bins par exemple)
-        exclusion_width = 2
-        mask[zero_vel_idx-exclusion_width:zero_vel_idx+exclusion_width+1, :] = False
-    
-    # Approche multi-cibles: trouver plusieurs pics potentiels
-    # Pour être considéré comme un pic valide, doit être au dessus d'un certain seuil
-    threshold_db = 20  # dB au-dessus du plancher de bruit
-    noise_floor = np.median(bal_rdm)
-    threshold = noise_floor + threshold_db
-    
-    # Trouver les pics dans les données équilibrées (référence)
-    from scipy.signal import find_peaks
-    
-    # Liste pour stocker les estimations d'alpha et beta pour chaque cible valide
-    alpha_estimates = []
-    beta_estimates = []
-    
-    # Liste pour stocker les coordonnées des pics utilisés
-    peak_coordinates = []
-    
-    # Parcourir chaque colonne de distance
-    for r_idx in range(bal_rdm.shape[1]):
-        # Extraire le profil de vitesse pour cette distance
-        bal_profile = bal_rdm[:, r_idx]
+        # Résoudre le système par moindres carrés
+        params, residuals, rank, s = np.linalg.lstsq(A, b, rcond=None)
+        alpha, beta = params[0], params[1]
         
-        # Trouver les pics dans ce profil
-        peaks, _ = find_peaks(bal_profile, height=threshold, distance=3)
+        print(f"Paramètres estimés avec référence: alpha = {alpha}, beta = {beta}")
+        print(f"Rapport |beta/alpha| = {np.abs(beta/alpha):.4f}")
         
-        for peak_idx in peaks:
-            # Ignorer les pics dans la région exclue
-            if not mask[peak_idx, r_idx]:
-                continue
-                
-            # Trouver l'indice de l'image miroir pour ce pic
-            mirror_idx = bal_rdm.shape[0] - peak_idx if peak_idx != bal_rdm.shape[0]//2 else peak_idx
-            
-            # Vérifier que le pic et son miroir sont dans la plage valide
-            if mirror_idx < 0 or mirror_idx >= bal_rdm.shape[0]:
-                continue
-                
-            # Extraire les amplitudes dans les deux cartes
-            bal_peak_amp = bal_lin[peak_idx, r_idx]
-            bal_mirror_amp = bal_lin[mirror_idx, r_idx]
-            unbal_peak_amp = unbal_lin[peak_idx, r_idx]
-            unbal_mirror_amp = unbal_lin[mirror_idx, r_idx]
-            
-            # Calculer le rapport d'image pour les deux canaux
-            # Éviter la division par zéro
-            epsilon = 1e-10
-            IRR_bal = bal_peak_amp / (bal_mirror_amp + epsilon)
-            IRR_unbal = unbal_peak_amp / (unbal_mirror_amp + epsilon)
-            
-            # Si le rapport d'image est trop petit, la cible n'est pas fiable pour l'estimation
-            if IRR_bal < 10:  # Au moins 10 dB de séparation nécessaire
-                continue
-                
-            # Calculer beta à partir du rapport d'image
-            beta_magnitude = 1 / np.sqrt(1 + IRR_unbal)
-            
-            # Estimer la phase de beta
-            beta_phase = np.angle(unbal_mirror_amp) - np.angle(unbal_peak_amp) + np.pi
-            beta = beta_magnitude * np.exp(1j * beta_phase)
-            
-            # Calculer alpha (assumant conservation d'énergie)
-            alpha = np.sqrt(1 - np.abs(beta)**2)
-            
-            # Stocker cette estimation
-            alpha_estimates.append(alpha)
-            beta_estimates.append(beta)
-            
-            # Stocker les coordonnées du pic utilisé
-            range_value = range_axis[r_idx]
-            velocity_value = velocity_axis[peak_idx]
-            peak_coordinates.append((range_value, velocity_value))
-            
-            # AJOUT: Afficher les coordonnées de ce pic
-            print(f"Pic utilisé: Distance = {range_value:.2f} m, Vitesse = {velocity_value:.2f} m/s")
-            print(f"  Amplitude du pic: {bal_rdm[peak_idx, r_idx]:.2f} dB")
-            print(f"  Amplitude du miroir: {bal_rdm[mirror_idx, r_idx]:.2f} dB")
-            print(f"  IRR canal équilibré: {20*np.log10(IRR_bal):.2f} dB")
-            print(f"  IRR canal déséquilibré: {20*np.log10(IRR_unbal):.2f} dB")
-            print(f"  Estimation locale: alpha = {alpha}, beta = {beta}")
-            print(f"  Magnitude beta = {np.abs(beta):.4f}, Phase beta = {np.angle(beta):.4f} rad")
-            print("-" * 60)
-    
-    # Si aucune cible valide n'a été trouvée, utiliser une méthode alternative
-    if not alpha_estimates:
-        print("Aucune cible valide trouvée pour l'estimation par pics. Utilisation de la méthode statistique.")
-        # Utiliser la méthode statistique comme solution de repli
-        E_unbal_xx = np.mean(np.abs(unbalanced_data)**2)
-        E_unbal_xsq = np.mean(unbalanced_data**2)
-        
-        gamma = np.sqrt(E_unbal_xx**2 - np.abs(E_unbal_xsq)**2) / E_unbal_xx
-        phi = 0.5 * np.angle(E_unbal_xsq)
-        
-        alpha = np.sqrt(gamma) * np.exp(1j * phi)
-        beta = np.sqrt(1 - gamma) * np.exp(1j * phi)
+        # Convertir les paramètres en gain/phase pour une meilleure interprétation
+        C, delta_psi = compute_gain_phase_from_params(alpha, beta)
+        print(f"Paramètres physiques: C = {C:.4f}, delta_psi = {delta_psi*180/np.pi:.2f}°")
         
         return alpha, beta
     
-    # AJOUT: Résumé des pics utilisés
-    print("\nRésumé des pics utilisés pour l'estimation:")
-    for i, (range_val, vel_val) in enumerate(peak_coordinates):
-        print(f"{i+1}. Distance = {range_val:.2f} m, Vitesse = {vel_val:.2f} m/s")
+    # Méthode statistique: basée sur les propriétés statistiques du signal
+    I = np.real(data_imbalanced)
+    Q = np.imag(data_imbalanced)
     
-    # Combiner les estimations (moyenne pondérée par l'amplitude du pic)
-    alpha_final = np.mean(alpha_estimates)
-    beta_final = np.mean(beta_estimates)
+    # Calcul des statistiques du signal
+    var_I = np.var(I)
+    var_Q = np.var(Q)
+    cov_IQ = np.mean(I * Q) - np.mean(I) * np.mean(Q)
     
-    print(f"\nCoefficients estimés: alpha = {alpha_final}, beta = {beta_final}")
-    print(f"Magnitude de beta = {np.abs(beta_final):.4f}, Phase de beta = {np.angle(beta_final):.4f} rad")
-    print(f"Rapport de réjection d'image estimé: {20*np.log10(np.abs(alpha_final)/np.abs(beta_final)):.2f} dB")
+    print(f"Statistiques du signal: var_I = {var_I:.4f}, var_Q = {var_Q:.4f}, cov_IQ = {cov_IQ:.4f}")
     
-    return alpha_final, beta_final
+    # Estimation initiale des paramètres physiques C et delta_psi
+    # C: rapport d'amplitude entre les voies I et Q
+    # delta_psi: erreur de phase (écart par rapport à la quadrature)
+    C_init = np.sqrt(var_I / var_Q)
+    delta_psi_init = np.arcsin(cov_IQ / np.sqrt(var_I * var_Q))
+    
+    # Conversion des paramètres physiques en alpha et beta
+    alpha = 0.5 * (1 + C_init * np.exp(1j * delta_psi_init))
+    beta = 0.5 * (1 - C_init * np.exp(1j * delta_psi_init))
+    
+    print(f"Paramètres estimés par statistiques:")
+    print(f"C = {C_init:.4f}, delta_psi = {delta_psi_init:.4f} rad ({delta_psi_init*180/np.pi:.2f}°)")
+    print(f"alpha = {alpha}, beta = {beta}")
+    print(f"Rapport |beta/alpha| = {np.abs(beta/alpha):.4f}")
+    
+    return alpha, beta
 
-def correct_iq_imbalance(complex_data, alpha=None, beta=None, method='stats'):
+def correct_imbalance(data_imbalanced, alpha, beta):
+    """
+    Corrige le déséquilibre IQ en utilisant les paramètres alpha et beta.
+    
+    Selon l'équation (10) des slides:
+    e_eq = (e_des - β/α* · (e_des)*) / (|α|² - |β|²)/α*
+    
+    Parameters:
+    -----------
+    data_imbalanced : ndarray complex
+        Données complexes déséquilibrées (I + jQ)
+    alpha : complex
+        Paramètre alpha du modèle de déséquilibre
+    beta : complex
+        Paramètre beta du modèle de déséquilibre
+        
+    Returns:
+    --------
+    data_corrected : ndarray complex
+        Données complexes corrigées
+    """
+    # Calcul du facteur β/α*
+    factor = beta / np.conjugate(alpha)
+    
+    # Calcul du dénominateur (|α|² - |β|²)/α*
+    denominator = (np.abs(alpha)**2 - np.abs(beta)**2) / np.conjugate(alpha)
+    
+    # Vérifier que le dénominateur n'est pas trop proche de zéro
+    if np.abs(denominator) < 1e-10:
+        raise ValueError("Le dénominateur est trop proche de zéro. Impossible de corriger le déséquilibre.")
+    
+    # Appliquer la correction: e_eq = (e_des - β/α* · (e_des)*) / ((|α|² - |β|²)/α*)
+    data_corrected = (data_imbalanced - factor * np.conjugate(data_imbalanced)) / denominator
+    
+    return data_corrected
+
+def compute_gain_phase_from_params(alpha, beta):
+    """
+    Convertit les paramètres α et β en gain (C) et erreur de phase (delta_psi).
+    
+    Parameters:
+    -----------
+    alpha : complex
+        Paramètre alpha du modèle de déséquilibre
+    beta : complex
+        Paramètre beta du modèle de déséquilibre
+        
+    Returns:
+    --------
+    C : float
+        Rapport de gain entre les voies I et Q
+    delta_psi : float
+        Erreur de phase en radians
+    """
+    # D'après l'équation (9) des slides:
+    # α = 0.5 * (1 + C*e^(j*delta_psi))
+    # β = 0.5 * (1 - C*e^(j*delta_psi))
+    
+    # Nous pouvons déduire:
+    # α + β = 1
+    # α - β = C*e^(j*delta_psi)
+    
+    complex_factor = (alpha - beta) / (alpha + beta)
+    C = np.abs(complex_factor)
+    delta_psi = np.angle(complex_factor)
+    
+    return C, delta_psi
+
+def calculate_imbalance_metrics(data, alpha=None, beta=None):
+    """
+    Calcule les métriques de déséquilibre IQ pour un signal complexe.
+    
+    Parameters:
+    -----------
+    data : ndarray complex
+        Données complexes (I + jQ)
+    alpha : complex, optional
+        Paramètre alpha du modèle de déséquilibre
+    beta : complex, optional
+        Paramètre beta du modèle de déséquilibre
+        
+    Returns:
+    --------
+    metrics : dict
+        Dictionnaire contenant les métriques de déséquilibre
+    """
+    import numpy as np
+    I = np.real(data)
+    Q = np.imag(data)
+    
+    var_I = np.var(I)
+    var_Q = np.var(Q)
+    cov_IQ = np.mean(I * Q) - np.mean(I) * np.mean(Q)
+    
+    # Rapport d'amplitude entre les voies (idéalement 1)
+    amplitude_imbalance = 10 * np.log10(var_I / var_Q)
+    
+    # Erreur de phase estimée (idéalement 0)
+    phase_error = np.arcsin(cov_IQ / np.sqrt(var_I * var_Q)) * 180 / np.pi
+    
+    metrics = {
+        'var_I': var_I,
+        'var_Q': var_Q,
+        'cov_IQ': cov_IQ,
+        'amplitude_imbalance_dB': amplitude_imbalance,
+        'phase_error_deg': phase_error
+    }
+    
+    # Calculer l'IRR (Image Rejection Ratio) si alpha et beta sont fournis
+    if alpha is not None and beta is not None:
+        irr = np.abs(alpha)**2 / np.abs(beta)**2
+        irr_dB = 10 * np.log10(irr)
+        metrics['irr_dB'] = irr_dB
+        
+        # Ajouter les paramètres physiques
+        C, delta_psi = compute_gain_phase_from_params(alpha, beta)
+        metrics['C'] = C
+        metrics['delta_psi_rad'] = delta_psi
+        metrics['delta_psi_deg'] = delta_psi * 180 / np.pi
+    
+    return metrics
     """
     Corrige le déséquilibre IQ dans les données radar complexes en utilisant la formule :
     
