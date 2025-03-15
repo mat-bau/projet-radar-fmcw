@@ -3,6 +3,7 @@
 
 # pour les visualisations pcq ca bouffe de la place
 output/
+Milestones/
 *.mp4
 *.pdf
 
