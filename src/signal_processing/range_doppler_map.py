@@ -5,7 +5,7 @@ from scipy import ndimage
 from src.data_handling.data_loader import extract_frame, reshape_to_chirps
 
 #------------------------------------------------------------------------------
-# Fonctions de détection et d'analyse
+# Axes physiques pour la rdm
 #------------------------------------------------------------------------------
 
 def calculate_range_axis(params, padded_samples=None):
@@ -346,14 +346,13 @@ def estimate_imbalance_parameters(data_imbalanced, data_reference=None, method='
     beta : complex
         Paramètre beta du modèle de déséquilibre
     """
-    # Si une référence équilibrée est disponible et la méthode est 'direct'
+    # Si on a le signal e_eq sur les autres cannaux on va utiliser la méthode directe
     if data_reference is not None and method == 'direct':
         # Méthode des moindres carrés pour résoudre le système
-        # On forme le système matriciel: e_des = α·e_eq + β·e_eq*
         A = np.column_stack([data_reference, np.conjugate(data_reference)])
         b = data_imbalanced
         
-        # Résoudre le système par moindres carrés
+        # on résoud (via least squares)
         params, residuals, rank, s = np.linalg.lstsq(A, b, rcond=None)
         alpha, beta = params[0], params[1]
         
@@ -366,20 +365,14 @@ def estimate_imbalance_parameters(data_imbalanced, data_reference=None, method='
         
         return alpha, beta
     
-    # Méthode statistique: basée sur les propriétés statistiques du signal
+    # Méthode statistique: basée sur les propriétés statistiques du signal, !! on utilise jamais cette méthode
     I = np.real(data_imbalanced)
     Q = np.imag(data_imbalanced)
-    
-    # Calcul des statistiques du signal
     var_I = np.var(I)
     var_Q = np.var(Q)
     cov_IQ = np.mean(I * Q) - np.mean(I) * np.mean(Q)
     
     print(f"Statistiques du signal: var_I = {var_I:.4f}, var_Q = {var_Q:.4f}, cov_IQ = {cov_IQ:.4f}")
-    
-    # Estimation initiale des paramètres physiques C et delta_psi
-    # C: rapport d'amplitude entre les voies I et Q
-    # delta_psi: erreur de phase (écart par rapport à la quadrature)
     C_init = np.sqrt(var_I / var_Q)
     delta_psi_init = np.arcsin(cov_IQ / np.sqrt(var_I * var_Q))
     
@@ -415,17 +408,16 @@ def correct_imbalance(data_imbalanced, alpha, beta):
     data_corrected : ndarray complex
         Données complexes corrigées
     """
-    # Calcul du facteur β/α*
+    # β/α*
     factor = beta / np.conjugate(alpha)
-    
-    # Calcul du dénominateur (|α|² - |β|²)/α*
+    # dénominateur (|α|² - |β|²)/α*
     denominator = (np.abs(alpha)**2 - np.abs(beta)**2) / np.conjugate(alpha)
     
-    # Vérifier que le dénominateur n'est pas trop proche de zéro
+    # check que le dénominateur n'est pas trop proche de zéro sinon ca donne trop de bruit
     if np.abs(denominator) < 1e-10:
         raise ValueError("Le dénominateur est trop proche de zéro. Impossible de corriger le déséquilibre.")
     
-    # Appliquer la correction: e_eq = (e_des - β/α* · (e_des)*) / ((|α|² - |β|²)/α*)
+    # e_eq = (e_des - β/α* · (e_des)*) / ((|α|² - |β|²)/α*)
     data_corrected = (data_imbalanced - factor * np.conjugate(data_imbalanced)) / denominator
     
     return data_corrected
@@ -448,17 +440,10 @@ def compute_gain_phase_from_params(alpha, beta):
     delta_psi : float
         Erreur de phase en radians
     """
-    # D'après l'équation (9) des slides:
-    # α = 0.5 * (1 + C*e^(j*delta_psi))
-    # β = 0.5 * (1 - C*e^(j*delta_psi))
-    
-    # Nous pouvons déduire:
-    # α + β = 1
-    # α - β = C*e^(j*delta_psi)
-    
-    complex_factor = (alpha - beta) / (alpha + beta)
-    C = np.abs(complex_factor)
-    delta_psi = np.angle(complex_factor)
+    factor1 = 2*alpha - 1
+    factor2 = 1 - 2*beta
+    C = np.sqrt(np.abs(factor1 * factor2))
+    delta_psi = 0.5 * np.angle(factor1 / factor2)
     
     return C, delta_psi
 
@@ -478,7 +463,7 @@ def calculate_imbalance_metrics(data, alpha=None, beta=None):
     Returns:
     --------
     metrics : dict
-        Dictionnaire contenant les métriques de déséquilibre
+        Dictionnaire contenant les métriques de déséquilibre : C, delta_psi, irr_dB, etc.
     """
     import numpy as np
     I = np.real(data)
@@ -515,70 +500,6 @@ def calculate_imbalance_metrics(data, alpha=None, beta=None):
         metrics['delta_psi_deg'] = delta_psi * 180 / np.pi
     
     return metrics
-    """
-    Corrige le déséquilibre IQ dans les données radar complexes en utilisant la formule :
-    
-    e_eq = (e_des - (β/α*) e_des*) / (|α|² - |β|²)
-    
-    Parameters:
-    -----------
-    complex_data : ndarray
-        Données complexes déséquilibrées (e_des)
-        
-    alpha : complex, optional
-        Coefficient alpha précalculé du modèle de déséquilibre
-        
-    beta : complex, optional
-        Coefficient beta précalculé du modèle de déséquilibre
-        
-    method : str
-        Méthode d'estimation des coefficients ('stats', 'ellipse') si alpha et beta non fournis
-        
-    Returns:
-    --------
-    corrected_data : ndarray
-        Données avec le déséquilibre IQ corrigé (e_eq)
-    """
-    import numpy as np
-    
-    # Utiliser les coefficients fournis si disponibles
-    if alpha is None or beta is None:
-        # Estimer les coefficients avec la méthode demandée
-        if method == 'stats':
-            # Méthode basée sur les statistiques du signal
-            E_xx = np.mean(np.abs(complex_data)**2)
-            E_xsq = np.mean(complex_data**2)
-            
-            # Estimation des coefficients de déséquilibre
-            gamma = np.sqrt(E_xx**2 - np.abs(E_xsq)**2) / E_xx
-            phi = 0.5 * np.angle(E_xsq)
-            
-            # Calcul de alpha et beta
-            alpha = np.sqrt(gamma) * np.exp(1j * phi)
-            beta = np.sqrt(1 - gamma) * np.exp(1j * phi)
-            
-        elif method == 'ellipse':
-            # Méthode d'ajustement d'ellipse (voir implémentation précédente)
-            print("Méthode ellipse non implémentée. Utilisation de 'stats'.")
-            return correct_iq_imbalance(complex_data, method='stats')
-            
-        else:
-            raise ValueError(f"Méthode inconnue: {method}")
-    
-    # Calcul du dénominateur
-    denominator = np.abs(alpha)**2 - np.abs(beta)**2
-    
-    # Vérifier que le dénominateur n'est pas trop proche de zéro
-    if np.abs(denominator) < 1e-10:
-        raise ValueError("Dénominateur trop proche de zéro. Coefficients de déséquilibre invalides.")
-    
-    # Calcul du terme (β/α*)
-    beta_over_alpha_conj = beta / np.conjugate(alpha)
-    
-    # Correction du déséquilibre selon la formule e_eq = (e_des - (β/α*) e_des*) / (|α|² - |β|²)
-    corrected_data = (complex_data - beta_over_alpha_conj * np.conjugate(complex_data)) / denominator
-    
-    return corrected_data
 
 #------------------------------------------------------------------------------
 # Fonctions de détection et d'analyse
@@ -856,7 +777,6 @@ def extract_targets_info(detections, range_doppler_map, range_axis, velocity_axi
     
     return targets
 
-
 def calculate_snr(range_doppler_map, target_indices, noise_area_size=5):
     """
     Calcule le rapport signal sur bruit (SNR) pour une cible détectée
@@ -901,7 +821,6 @@ def calculate_snr(range_doppler_map, target_indices, noise_area_size=5):
     snr = 10 * np.log10(signal_power / noise_power) if noise_power > 0 else 0
     
     return snr
-
 
 #------------------------------------------------------------------------------
 # Fonctions de traitement avancé
@@ -1021,7 +940,6 @@ def generate_coherent_integration(data_frames, num_frames=None, window_type='han
     
     return integrated_data
 
-
 #------------------------------------------------------------------------------
 # Fonctions d'analyse et d'estimation
 #------------------------------------------------------------------------------
@@ -1054,7 +972,6 @@ def estimate_doppler_resolution(params):
     doppler_resolution_hz = 1 / (Mc * Tc)
     
     return doppler_resolution_hz
-
 
 def estimate_range_doppler_coupling(params):
     """
@@ -1089,7 +1006,6 @@ def estimate_range_doppler_coupling(params):
     coupling_factor = (2 * Tc * Ms) / (lambda_c * B)
     
     return coupling_factor
-
 
 def generate_micro_doppler_signature(data_frames, params, frame_time):
     """
