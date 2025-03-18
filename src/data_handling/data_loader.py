@@ -139,7 +139,7 @@ def subtract_background(data, background_data):
     # et on fait la moyenne de plein de frames pour réduire les bruits "extrêmes" et garder les bruits "constants" du hardware
     background_data = np.mean(background_data, axis=0)
 
-    # S'assurer que les données ont la même forme
+    # S'assurer que les données ont la même forme, update labo2 y'en a pas besoin au final je dois encore y regarder
     if data.shape != background_data.shape:
         raise ValueError(f"Les dimensions des données ({data.shape}) et du fond ({background_data.shape}) ne correspondent pas")
     
